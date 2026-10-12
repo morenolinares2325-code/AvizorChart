@@ -1,36 +1,42 @@
 import streamlit as st
+from modulos.universo import cargar_universo_acciones
+from modulos.render_filtros import render_5_pestanas
 
-st.title("🔍 Buscadores")
-st.caption("Cuatro formas de encontrar oportunidades para la Mesa.")
 
-tab1, tab2, tab3, tab4 = st.tabs([
-    "🔍 Búsqueda Directa",
-    "📈 Búsqueda de Acciones",
-    "🌍 Búsqueda Multi-Activo",
-    "📁 Buscador de Carteras",
-])
+st.title("📈 Búsqueda de Acciones")
+st.caption("Barre el universo de acciones con filtros técnicos, fundamentales y de patrones.")
 
-with tab1:
-    st.subheader("Búsqueda Directa")
-    st.caption("Introduce un ticker y pásalo directo a la Mesa.")
 
-    ticker = st.text_input("Ticker", placeholder="Ej: NVDA, AAPL, TSLA...", key="dir_ticker")
-    timeframe = st.selectbox("Timeframe", ["1H", "2H", "3H", "4H", "1D", "1S"], key="dir_tf")
+# =============================================================================
+# CONFIGURACIÓN OPERATIVA
+# =============================================================================
+st.markdown("### ⚙️ Configuración Operativa")
 
-    if st.button("🚀 Enviar a la Mesa", type="primary", key="btn_dir"):
-        if ticker:
-            st.success(f"Enviando {ticker} ({timeframe}) a la Mesa...")
-        else:
-            st.warning("Introduce un ticker.")
+c1, c2, c3, c4 = st.columns(4)
+with c1:
+    top_mostrar = st.slider("Nº candidatas a listar", 5, 50, 15, 1, key="acc_top")
+with c2:
+    presupuesto = st.number_input("💰 Presupuesto ($)", 100, 1_000_000, 10_000, 500, key="acc_presupuesto")
+with c3:
+    riesgo_pct = st.slider("Riesgo por operación (%)", 0.25, 5.0, 1.0, 0.25, key="acc_riesgo")
+with c4:
+    timeframe = st.selectbox("Temporalidad", ["1H", "2H", "3H", "4H", "1D", "1S"], key="acc_tf")
 
-with tab2:
-    st.subheader("Búsqueda de Acciones")
-    st.info("🚧 Sección en desarrollo.")
 
-with tab3:
-    st.subheader("Búsqueda Multi-Activo")
-    st.info("🚧 Sección en desarrollo.")
+# =============================================================================
+# FILTROS (5 PESTAÑAS)
+# =============================================================================
+st.markdown("### 🎛️ Filtros")
+render_5_pestanas()
 
-with tab4:
-    st.subheader("Buscador de Carteras")
-    st.info("🚧 Sección en desarrollo.")
+
+# =============================================================================
+# BOTÓN DE ESCANEO
+# =============================================================================
+st.markdown("---")
+
+if st.button("🚀 Escanear universo de acciones", type="primary", use_container_width=True, key="acc_escanear"):
+    with st.spinner("Cargando universo de acciones..."):
+        universo = cargar_universo_acciones()
+    st.info(f"Universo cargado: **{len(universo)} tickers**. Filtrado en desarrollo.")
+    st.warning("🚧 La lógica de filtrado real se implementará en el siguiente paso.")
