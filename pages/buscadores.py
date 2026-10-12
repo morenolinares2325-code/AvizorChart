@@ -61,8 +61,8 @@ with tab2:
     with c4:
         st.selectbox("Temporalidad", ["1H", "2H", "3H", "4H", "1D", "1S"], key="acc_tf")
 
-    # --- 5 pestañas de filtros ---
-    render_5_pestanas()
+    # --- 5 pestañas de filtros (con prefijo "acc") ---
+    render_5_pestanas(prefijo="acc")
 
     # --- Botón de escaneo ---
     st.markdown("---")
@@ -102,7 +102,7 @@ with tab3:
     tab_filtros, tab_prop = st.tabs(["🎛️ Filtros", "🏦 Prop Firm"])
 
     with tab_filtros:
-        render_5_pestanas()
+        render_5_pestanas(prefijo="multi")
 
     with tab_prop:
         st.markdown("### 🏦 Modo Prop Firm")
