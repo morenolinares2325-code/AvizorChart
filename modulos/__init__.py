@@ -1,1 +1,0 @@
-"""Módulos compartidos de AvizorChart."""
