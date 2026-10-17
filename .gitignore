@@ -4,3 +4,9 @@ backend/.env
 frontend/node_modules
 frontend/.next
 
+
+.env
+backend/.env
+frontend/node_modules
+frontend/.next
+
