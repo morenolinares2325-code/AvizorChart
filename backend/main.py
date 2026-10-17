@@ -1,6 +1,6 @@
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from api.screener import router as screener_router
 
 app = FastAPI(
     title="AvizorChart Engine",
@@ -8,7 +8,6 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS: Indispensable para que tu web en Framer pueda consultar la API sin bloqueos
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,6 +15,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Conectar rutas de screener y agentes
+app.include_router(screener_router)
 
 @app.get("/")
 def estado_servidor():

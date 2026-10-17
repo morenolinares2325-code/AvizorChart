@@ -1,0 +1,23 @@
+cat << 'EOF' > .cursorrules
+# AVIZORCHART - REGLAS DE ARQUITECTURA Y DESARROLLO
+
+## 1. Visión del Proyecto
+Plataforma SaaS de trading profesional orientada a superar a TradingView mediante análisis con IA y ECharts nativo.
+
+## 2. Estructura de Carpetas
+- /backend: API REST desarrollada en FastAPI (Python). Cálculos matemáticos, universos de mercado y orquestación de agentes IA.
+- /frontend: Next.js 14 (App Router) + TypeScript + Tailwind CSS + Lucide Icons + Apache ECharts.
+
+## 3. Navegación Principal del Frontend
+Barra superior fija estilo TradingView con tema oscuro:
+- Inicio
+- Screener (con 3 subsecciones: 1. Búsqueda Directa, 2. Búsqueda Acciones Ojeador, 3. Búsqueda Multiactivos Ojeador)
+- Mega Gráfico (ECharts interactivo con velas y volumen)
+- Mesa de Agentes (Sala de deliberación de los 8 especialistas)
+- Perfil (Configuración, conexión con broker y automatización MT5)
+
+## 4. Estándares Técnicos
+- Mantener separación estricta: el frontend consume la API en http://localhost:8000.
+- Uso exclusivo de Apache ECharts para la visualización de velas OHLCV.
+- TypeScript estricto para todas las interfaces de datos.
+EOF
