@@ -6,19 +6,19 @@ export function HeroSection() {
   return (
     <section className="relative min-h-[calc(100vh-3.5rem)] overflow-hidden border-b border-zinc-800">
       <Image
-        src="/brand/avizor-hero.jpg"
-        alt=""
+        src="/fondo-avizor.jpg"
+        alt="AvizorChart Cuántico"
         fill
         priority
         sizes="100vw"
-        className="object-cover object-center"
+        className="object-cover object-center opacity-85"
       />
-      <div className="absolute inset-0 bg-zinc-950/45" />
-      <div className="absolute inset-0 bg-gradient-to-r from-zinc-950 via-zinc-950/75 to-zinc-950/20" />
-      <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-transparent to-zinc-950/40" />
-      <div className="market-grid pointer-events-none absolute inset-0 opacity-20" />
+      {/* Velo lateral izquierdo para facilitar la lectura del texto */}
+      <div className="absolute inset-0 bg-gradient-to-r from-zinc-950/90 via-zinc-950/50 to-transparent" />
+      {/* Velo vertical para suavizar bordes inferior y superior */}
+      <div className="absolute inset-0 bg-gradient-to-t from-zinc-950/80 via-transparent to-zinc-950/40" />
 
-      <div className="relative mx-auto flex min-h-[calc(100vh-3.5rem)] max-w-[1600px] flex-col justify-center px-4 py-24 md:py-32">
+      <div className="relative z-10 mx-auto flex min-h-[calc(100vh-3.5rem)] max-w-[1600px] flex-col justify-center px-4 py-24 md:py-32">
         <p className="text-xs font-semibold uppercase tracking-[0.22em] text-bull">
           Detección técnica anticipada
         </p>

@@ -1,13 +1,16 @@
-import { PageShell } from "@/components/layout/PageShell";
+import { Suspense } from "react";
+import { MegaChartWorkspace } from "@/components/chart/MegaChartWorkspace";
 
 export default function GraficoPage() {
   return (
-    <div className="mx-auto max-w-[1600px] px-4 py-8">
-      <PageShell
-        kicker="Sección 2"
-        title="Mega Gráfico"
-        description="Canvas Apache ECharts con velas OHLCV, volumen e Indicator Builder. Motor exclusivo de visualización de precios de AvizorChart."
-      />
-    </div>
+    <Suspense
+      fallback={
+        <div className="flex h-[calc(100vh-3.5rem)] items-center justify-center bg-[#08090d] font-mono text-xs text-emerald-400">
+          Inicializando Mega Gráfico…
+        </div>
+      }
+    >
+      <MegaChartWorkspace />
+    </Suspense>
   );
 }

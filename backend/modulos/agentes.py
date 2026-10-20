@@ -1,6 +1,10 @@
 import os
 from dotenv import load_dotenv
-from groq import Groq
+
+try:
+    from groq import Groq
+except ImportError:  # pragma: no cover
+    Groq = None  # type: ignore
 
 load_dotenv()
 
@@ -20,6 +24,9 @@ def llamar_ia(prompt: str) -> str:
     if not api_key:
         return "⚠️ Falta la clave GROQ_API_KEY en el archivo .env."
         
+    if Groq is None:
+        return "⚠️ Falta el paquete groq. Instálalo para activar los dictámenes de IA."
+
     try:
         client = Groq(api_key=api_key)
         chat_completion = client.chat.completions.create(
@@ -77,7 +84,7 @@ Diagnostica la psicología de los participantes. Máximo 90 palabras."""
 
 def dictamen_viktor(ticker: str, d: dict) -> str:
     accion = d.get('accion', 'BUY')
-prompt = f"""Eres Viktor Krum, Gestor de Riesgo marcial.
+    prompt = f"""Eres Viktor Krum, Gestor de Riesgo marcial.
 Empieza SIEMPRE con: {accion} en ${d.get('entrada')}
 Modalidad: {d.get('modalidad')} | Stop Loss: ${d.get('sl')} | TP1: ${d.get('tp1')} | TP2: ${d.get('tp2')} | R:B: {d.get('ratio_rb')}
 Acciones recomendadas: {d.get('acciones')} | Riesgo total: ${d.get('riesgo_max_dinero')}
