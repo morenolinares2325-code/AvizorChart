@@ -42,7 +42,7 @@ export function NewsArticleDetail({ article, loading }: NewsArticleDetailProps) 
         href={article.url}
         target="_blank"
         rel="noreferrer"
-        className="inline-flex items-center gap-1.5 rounded border border-zinc-800 bg-zinc-950 px-3 py-1.5 font-mono text-[11px] text-emerald-300 hover:border-emerald-500/40"
+        className="inline-flex items-center gap-1.5 rounded border border-[#00FF66]/25 bg-[#0A0A0F] px-3 py-1.5 font-mono text-[11px] text-[#00FF66] hover:border-[#00FF66]/50"
       >
         Abrir fuente original
         <ExternalLink className="h-3.5 w-3.5" />

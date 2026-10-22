@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
-import { Navbar } from "@/components/layout/Navbar";
-import { SupportWidget } from "@/components/layout/SupportWidget";
+import { ChromeFrame } from "@/components/layout/ChromeFrame";
+import { LiveTvShell } from "@/components/news/LiveTvShell";
 import "./globals.css";
 
 const geistSans = localFont({
@@ -19,6 +19,10 @@ export const metadata: Metadata = {
   title: "AvizorChart.dev — Terminal cuantitativo",
   description:
     "Plataforma SaaS de trading con detección técnica anticipada, screeners cuantitativos, Mesa de Agentes IA y ejecución multinivel.",
+  icons: {
+    icon: "/brand/avizor-mark.png?v=3",
+    apple: "/brand/avizor-mark.png?v=3",
+  },
 };
 
 export default function RootLayout({
@@ -29,11 +33,11 @@ export default function RootLayout({
   return (
     <html lang="es" className="dark">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-zinc-950 font-sans text-zinc-100 antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-[#050508] font-sans text-white antialiased`}
       >
-        <Navbar />
-        <main className="pt-14">{children}</main>
-        <SupportWidget />
+        <LiveTvShell>
+          <ChromeFrame>{children}</ChromeFrame>
+        </LiveTvShell>
       </body>
     </html>
   );

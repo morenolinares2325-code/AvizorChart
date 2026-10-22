@@ -69,8 +69,8 @@ export function PrivateWorkspace() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-3.5rem)] flex-col bg-[#08090d]">
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-zinc-800/80 px-3">
+    <div className="flex h-full w-full flex-col overflow-hidden bg-[#050508]">
+      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-zinc-800/80 pl-12 pr-3">
         <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">Zona privada</p>
         <div className="flex h-8 min-w-0 overflow-x-auto rounded border border-zinc-800 p-0.5">
           {TABS.map((item) => (

@@ -5,7 +5,7 @@ export default function GraficoPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex h-[calc(100vh-3.5rem)] items-center justify-center bg-[#08090d] font-mono text-xs text-emerald-400">
+        <div className="flex h-full items-center justify-center bg-[#050508] font-mono text-xs text-emerald-400">
           Inicializando Mega Gráfico…
         </div>
       }

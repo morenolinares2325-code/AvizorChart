@@ -17,7 +17,14 @@ export const API_BASE = "http://127.0.0.1:8000";
 const INTERVAL_PATTERN = /^(\d+)(s|m|h|d|w)$/;
 
 export function parseChartInterval(raw: string): ChartInterval | null {
-  const match = raw.trim().toLowerCase().match(INTERVAL_PATTERN);
+  const token = raw.trim().toLowerCase();
+  if (token === "d") {
+    return "1d";
+  }
+  if (token === "s" || token === "w") {
+    return "1w";
+  }
+  const match = token.match(INTERVAL_PATTERN);
   if (!match) {
     return null;
   }
@@ -26,6 +33,39 @@ export function parseChartInterval(raw: string): ChartInterval | null {
     return null;
   }
   return `${amount}${match[2]}`;
+}
+
+const PERIOD_RANK: Record<string, number> = {
+  "1d": 1,
+  "5d": 2,
+  "1mo": 3,
+  "3mo": 4,
+  "6mo": 5,
+  ytd: 5,
+  "1y": 6,
+  "2y": 7,
+  "5y": 8,
+  "10y": 9,
+  max: 10,
+  "7d": 2,
+  "60d": 3,
+};
+
+export function clampPeriodForInterval(interval: ChartInterval, period: string): string {
+  const parsed = parseChartInterval(interval);
+  const unit = parsed ? parsed.slice(-1) : "d";
+  const amount = parsed ? Number(parsed.slice(0, -1)) : 1;
+  let max = "max";
+  if (unit === "s" || (unit === "m" && amount <= 5)) {
+    max = "5d";
+  } else if (unit === "m") {
+    max = "1mo";
+  } else if (unit === "h") {
+    max = "2y";
+  }
+  const requested = PERIOD_RANK[period] ?? 3;
+  const allowed = PERIOD_RANK[max] ?? 10;
+  return requested > allowed ? max : period;
 }
 
 export function periodForInterval(interval: ChartInterval): string {
@@ -42,15 +82,15 @@ export function periodForInterval(interval: ChartInterval): string {
     return "5d";
   }
   if (unit === "h" && amount <= 1) {
-    return "1mo";
+    return "2y";
   }
   if (unit === "h") {
-    return "3mo";
+    return "2y";
   }
   if (unit === "d") {
-    return amount === 1 ? "1mo" : "1y";
+    return amount === 1 ? "5y" : "max";
   }
-  return "5y";
+  return "max";
 }
 
 function asNumber(value: unknown): number | null {
@@ -211,9 +251,13 @@ export async function fetchCandles(
   ticker: string,
   interval: ChartInterval,
   signal?: AbortSignal,
+  periodOverride?: string,
 ): Promise<CandlePayload> {
-  const period = periodForInterval(interval);
-  const url = `http://127.0.0.1:8000/api/market/history?ticker=${encodeURIComponent(ticker)}&period=${encodeURIComponent(period)}&interval=${encodeURIComponent(interval)}`;
+  const apiInterval = interval === "1s" ? "1w" : interval;
+  const period = periodOverride
+    ? clampPeriodForInterval(apiInterval, periodOverride)
+    : periodForInterval(apiInterval);
+  const url = `http://127.0.0.1:8000/api/market/history?ticker=${encodeURIComponent(ticker)}&period=${encodeURIComponent(period)}&interval=${encodeURIComponent(apiInterval)}`;
 
   try {
     const res = await fetch(url, { signal });
@@ -221,7 +265,6 @@ export async function fetchCandles(
       throw new Error(`Error HTTP: ${res.status} - ${res.statusText}`);
     }
     const json: unknown = await res.json();
-    console.log("Datos recibidos de FastAPI:", json);
     return parseHistoryPayload(json, interval);
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") {

@@ -24,7 +24,7 @@ export function MarketClock() {
 
   return (
     <div
-      className="hidden items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 font-mono text-xs text-zinc-300 lg:flex"
+      className="hidden items-center gap-1.5 font-mono text-[11px] tabular-nums text-zinc-400 lg:flex"
       aria-live="polite"
       title="Hora de sesión de mercado en UTC"
     >

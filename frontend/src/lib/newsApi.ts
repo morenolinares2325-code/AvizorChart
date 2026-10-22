@@ -1,8 +1,9 @@
 import { API_BASE } from "@/lib/marketApi";
 
-export type NewsSource = "CNBC" | "Yahoo Finance" | "MarketWatch";
+export type NewsSource = "CNBC" | "Yahoo Finance" | "MarketWatch" | "Investing";
 export type NewsSentiment = "Bullish" | "Bearish" | "Neutral";
 export type NewsImpact = "high" | "medium" | "low";
+export type NewsCategory = "macro" | "earnings" | "general";
 
 export interface NewsArticle {
   id: string;
@@ -15,9 +16,30 @@ export interface NewsArticle {
   sentiment: NewsSentiment;
   score: number;
   impact: NewsImpact;
+  category: NewsCategory;
 }
 
-export const NEWS_SOURCES: NewsSource[] = ["CNBC", "Yahoo Finance", "MarketWatch"];
+export const NEWS_SOURCES: NewsSource[] = ["CNBC", "Yahoo Finance", "MarketWatch", "Investing"];
+
+const CHART_ALIAS: Record<string, string> = {
+  BTC: "BTC-USD",
+  ETH: "ETH-USD",
+  EURUSD: "EURUSD=X",
+  GBPUSD: "GBPUSD=X",
+  USDJPY: "USDJPY=X",
+  SPX: "^GSPC",
+  NDX: "^IXIC",
+};
+
+export function toChartSymbol(ticker: string): string {
+  const key = ticker.trim().toUpperCase();
+  return CHART_ALIAS[key] ?? key;
+}
+
+export function primaryChartSymbol(article: NewsArticle): string | null {
+  const ticker = article.tickers[0];
+  return ticker ? toChartSymbol(ticker) : null;
+}
 
 export function stripHtml(value: string): string {
   return value
@@ -33,7 +55,7 @@ export function stripHtml(value: string): string {
 }
 
 function asSource(value: unknown): NewsSource {
-  if (value === "CNBC" || value === "Yahoo Finance" || value === "MarketWatch") {
+  if (value === "CNBC" || value === "Yahoo Finance" || value === "MarketWatch" || value === "Investing") {
     return value;
   }
   return "Yahoo Finance";
@@ -51,6 +73,13 @@ function asImpact(value: unknown): NewsImpact {
     return value;
   }
   return "low";
+}
+
+function asCategory(value: unknown): NewsCategory {
+  if (value === "macro" || value === "earnings" || value === "general") {
+    return value;
+  }
+  return "general";
 }
 
 function normalizeArticle(raw: Record<string, unknown>, index: number): NewsArticle {
@@ -72,6 +101,7 @@ function normalizeArticle(raw: Record<string, unknown>, index: number): NewsArti
     sentiment: asSentiment(raw.sentiment),
     score: Number.isFinite(score) ? Math.max(0, Math.min(100, Math.round(score))) : 50,
     impact: asImpact(raw.impact),
+    category: asCategory(raw.category),
   };
 }
 

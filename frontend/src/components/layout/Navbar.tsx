@@ -1,8 +1,9 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, Radar, UserRound, X } from "lucide-react";
+import { Menu, UserRound, X } from "lucide-react";
 import { useState } from "react";
 import { PRIMARY_NAV } from "@/lib/navigation";
 import { ConnectionBadge } from "@/components/layout/ConnectionBadge";
@@ -13,51 +14,67 @@ export function Navbar() {
   const [open, setOpen] = useState(false);
 
   return (
-    <header className="fixed inset-x-0 top-0 z-50 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur-md">
-      <nav className="mx-auto flex h-14 max-w-[1600px] items-center justify-between gap-4 px-4">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="group flex items-center gap-2.5">
-            <span className="flex h-8 w-8 items-center justify-center rounded-md border border-bull/40 bg-bull/10 text-bull shadow-[0_0_18px_rgba(34,197,94,0.25)]">
-              <Radar className="h-4 w-4" aria-hidden />
+    <header className="fixed inset-x-0 top-0 z-50 border-b border-[#00FF66]/15 bg-[#050508]/95 backdrop-blur-xl">
+      <nav className="mx-auto grid h-14 w-full grid-cols-[1fr_auto_1fr] items-stretch px-3 sm:px-6">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <Link
+            href="/"
+            className="group flex min-w-0 items-center gap-2.5"
+            aria-label="AvizorChart.dev — volver al inicio"
+          >
+            <span className="relative flex h-10 w-9 shrink-0 items-center justify-center overflow-visible">
+              <Image
+                src="/brand/avizor-mark.png?v=3"
+                alt=""
+                width={36}
+                height={40}
+                priority
+                className="h-10 w-auto max-w-none object-contain object-center opacity-95 transition duration-200 group-hover:opacity-100"
+              />
             </span>
-            <span className="leading-tight">
-              <span className="block font-semibold tracking-tight text-zinc-100">
-                AvizorChart
-                <span className="text-bull">.dev</span>
+            <span className="min-w-0 leading-tight">
+              <span className="block truncate text-[15px] font-semibold tracking-tight text-white transition duration-200 group-hover:opacity-80">
+                AvizorChart.dev
               </span>
-              <span className="hidden text-[10px] uppercase tracking-[0.18em] text-zinc-500 xl:block">
+              <span className="hidden text-[10px] uppercase tracking-[0.2em] text-zinc-500 xl:block">
                 Terminal cuantitativo
               </span>
             </span>
           </Link>
-          <ConnectionBadge connected />
+          <span className="hidden 2xl:inline-flex">
+            <ConnectionBadge connected />
+          </span>
         </div>
 
-        <ul className="hidden items-center gap-1 lg:flex">
+        <ul className="hidden items-stretch lg:flex">
           {PRIMARY_NAV.map((item) => {
             const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
-              <li key={item.href}>
+              <li key={item.href} className="flex">
                 <Link
                   href={item.href}
-                  className={`whitespace-nowrap rounded-md px-2.5 py-1.5 text-[13px] transition-colors ${
-                    active
-                      ? "bg-zinc-800 text-zinc-50"
-                      : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"
+                  className={`relative flex h-full items-center justify-center px-3 text-[13px] font-medium tracking-tight transition-colors xl:px-3.5 ${
+                    active ? "text-white" : "text-white/80 hover:text-white"
                   }`}
                 >
                   {item.label}
+                  {active ? (
+                    <span
+                      aria-hidden
+                      className="absolute inset-x-3 bottom-0 mx-auto h-[2px] max-w-[1.6rem] rounded-full bg-[#00FF66] shadow-[0_0_10px_rgba(0,255,102,0.55)]"
+                    />
+                  ) : null}
                 </Link>
               </li>
             );
           })}
         </ul>
 
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center justify-end gap-2">
           <MarketClock />
           <Link
             href="/perfil"
-            className="inline-flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-200 transition-colors hover:border-zinc-700 hover:bg-zinc-800"
+            className="inline-flex items-center gap-2 rounded-full border border-[#00FF66]/20 bg-[#0A0A0F] px-3 py-1.5 text-sm font-medium text-white transition-colors hover:border-[#00FF66]/45"
           >
             <UserRound className="h-4 w-4 text-zinc-400" aria-hidden />
             <span className="hidden sm:inline">Cuenta</span>
@@ -77,17 +94,22 @@ export function Navbar() {
       {open ? (
         <div className="border-t border-zinc-800 bg-zinc-950 px-4 py-3 lg:hidden">
           <ul className="grid gap-1">
-            {PRIMARY_NAV.map((item) => (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  onClick={() => setOpen(false)}
-                  className="block rounded-md px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-900 hover:text-zinc-50"
-                >
-                  {item.label}
-                </Link>
-              </li>
-            ))}
+            {PRIMARY_NAV.map((item) => {
+              const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+              return (
+                <li key={item.href}>
+                  <Link
+                    href={item.href}
+                    onClick={() => setOpen(false)}
+                    className={`block rounded-md px-3 py-2 text-sm ${
+                      active ? "bg-[#00FF66]/10 text-white" : "text-zinc-300 hover:bg-zinc-900 hover:text-zinc-50"
+                    }`}
+                  >
+                    {item.label}
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         </div>
       ) : null}

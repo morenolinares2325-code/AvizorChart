@@ -1,16 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import type { NewsArticle } from "@/lib/newsApi";
+import { CandlestickChart } from "lucide-react";
+import { primaryChartSymbol, toChartSymbol, type NewsArticle } from "@/lib/newsApi";
 
 const sentimentStyle: Record<NewsArticle["sentiment"], string> = {
-  Bullish: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
-  Bearish: "border-red-500/40 bg-red-500/10 text-red-300",
+  Bullish: "border-[#00FF66]/40 bg-[#00FF66]/10 text-[#00FF66]",
+  Bearish: "border-red-500/40 bg-red-500/10 text-red-400",
   Neutral: "border-zinc-600 bg-zinc-800 text-zinc-300",
 };
 
 const barStyle: Record<NewsArticle["sentiment"], string> = {
-  Bullish: "bg-emerald-500",
+  Bullish: "bg-[#00FF66]",
   Bearish: "bg-red-500",
   Neutral: "bg-zinc-500",
 };
@@ -22,14 +23,15 @@ const impactLabel: Record<NewsArticle["impact"], string> = {
 };
 
 export function NewsImpactBlock({ article }: { article: NewsArticle }) {
+  const chartSymbol = primaryChartSymbol(article);
   return (
-    <section className="rounded border border-zinc-800/80 bg-zinc-950/80 p-3">
+    <section className="rounded-lg border border-[#00FF66]/20 bg-[#0A0A0F] p-3">
       <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">
         Evaluación de impacto y sentimiento
       </p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <span
-          className={`rounded border px-2 py-0.5 font-mono text-[11px] font-semibold ${sentimentStyle[article.sentiment]}`}
+          className={`rounded-full border px-2 py-0.5 font-mono text-[11px] font-semibold ${sentimentStyle[article.sentiment]}`}
         >
           {article.sentiment}
         </span>
@@ -53,16 +55,25 @@ export function NewsImpactBlock({ article }: { article: NewsArticle }) {
           {article.tickers.map((ticker) => (
             <Link
               key={ticker}
-              href={`/grafico?symbol=${ticker}`}
-              className="rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 font-mono text-[11px] text-emerald-300 hover:border-emerald-500/40"
+              href={`/grafico?symbol=${encodeURIComponent(toChartSymbol(ticker))}`}
+              className="rounded border border-[#00FF66]/20 bg-[#050508] px-1.5 py-0.5 font-mono text-[11px] text-[#00FF66] hover:border-[#00FF66]/50"
             >
-              ${ticker}
+              {ticker}
             </Link>
           ))}
         </div>
       ) : (
         <p className="mt-3 font-mono text-[10px] text-zinc-600">Sin tickers detectados</p>
       )}
+      {chartSymbol ? (
+        <Link
+          href={`/grafico?symbol=${encodeURIComponent(chartSymbol)}`}
+          className="mt-3 inline-flex items-center gap-1.5 rounded border border-[#00FF66]/35 bg-[#00FF66]/10 px-2.5 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-[#00FF66] transition hover:bg-[#00FF66]/20"
+        >
+          <CandlestickChart className="h-3.5 w-3.5" aria-hidden />
+          Analizar en Mega Gráfico
+        </Link>
+      ) : null}
     </section>
   );
 }
