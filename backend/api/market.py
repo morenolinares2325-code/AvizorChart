@@ -18,29 +18,42 @@ NATIVE_MINUTE_INTERVALS = {
     90: "90m",
 }
 PERIOD_BY_SOURCE = {
-    "1m": "1d",
+    "1m": "5d",
     "2m": "5d",
-    "5m": "5d",
+    "5m": "1mo",
     "15m": "1mo",
     "30m": "1mo",
     "90m": "1mo",
-    "1h": "3mo",
-    "1d": "1y",
-    "1wk": "5y",
+    "1h": "2y",
+    "1d": "5y",
+    "1wk": "max",
     "1mo": "max",
 }
-ALLOWED_PERIODS = {
-    "1d",
-    "5d",
-    "1mo",
-    "3mo",
-    "6mo",
-    "1y",
-    "2y",
-    "5y",
-    "ytd",
-    "max",
+YF_PERIOD_CAP = {
+    "1m": "7d",
+    "2m": "60d",
+    "5m": "60d",
+    "15m": "60d",
+    "30m": "60d",
+    "90m": "60d",
+    "1h": "2y",
 }
+PERIOD_RANK = {
+    "1d": 1,
+    "5d": 2,
+    "7d": 3,
+    "1mo": 4,
+    "60d": 5,
+    "3mo": 6,
+    "6mo": 7,
+    "ytd": 7,
+    "1y": 8,
+    "2y": 9,
+    "5y": 10,
+    "10y": 11,
+    "max": 12,
+}
+ALLOWED_PERIODS = set(PERIOD_RANK)
 
 
 def _sanitize_ticker(raw: str) -> str:
@@ -96,7 +109,7 @@ def _resolve_interval(raw: str) -> tuple[str, str, Optional[str], bool]:
     if unit == "d":
         source = "1d"
         rule = None if amount == 1 else f"{amount}D"
-        period = "1y" if amount == 1 else "5y"
+        period = "5y" if amount == 1 else "max"
         return source, period, rule, False
 
     total_minutes = amount * 60 if unit == "h" else amount
@@ -113,8 +126,17 @@ def _resolve_interval(raw: str) -> tuple[str, str, Optional[str], bool]:
     rule = None if total_minutes == native_minutes else f"{total_minutes}min"
     period = PERIOD_BY_SOURCE.get(source, "1mo")
     if source == "1h" and total_minutes >= 240:
-        period = "6mo"
+        period = "2y"
     return source, period, rule, True
+
+
+def _clamp_period(source_interval: str, requested: str) -> str:
+    cap = YF_PERIOD_CAP.get(source_interval, "max")
+    if requested == "ytd":
+        return requested if PERIOD_RANK.get(cap, 12) >= PERIOD_RANK["6mo"] else cap
+    want = PERIOD_RANK.get(requested, 8)
+    limit = PERIOD_RANK.get(cap, 12)
+    return requested if want <= limit else cap
 
 
 def _resample_ohlcv(frame: pd.DataFrame, rule: str) -> pd.DataFrame:
@@ -144,12 +166,13 @@ def get_candles(
     interval_key = interval.strip().lower()
     source_interval, default_period, resample_rule, include_time = _resolve_interval(interval_key)
 
-    resolved_period = (period or default_period).strip().lower()
-    if resolved_period not in ALLOWED_PERIODS:
+    requested_period = (period or default_period).strip().lower()
+    if requested_period not in ALLOWED_PERIODS:
         raise HTTPException(
             status_code=400,
             detail=f"Periodo no soportado. Usa: {', '.join(sorted(ALLOWED_PERIODS))}.",
         )
+    resolved_period = _clamp_period(source_interval, requested_period)
 
     try:
         history = yf.Ticker(symbol).history(

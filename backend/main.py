@@ -141,14 +141,61 @@ RSS_FEEDS = {
     "CNBC Markets": "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664",
     "Yahoo Finance": "https://finance.yahoo.com/news/rssindex",
     "MarketWatch Top": "https://feeds.content.dowjones.io/public/rss/mw_topstories",
-    "Investing.com": "https://feeds.content.dowjones.io/public/rss/mw_bulletins",
-    "Investing Forex": "https://feeds.content.dowjones.io/public/rss/mw_realtimeheadlines"
+    "Investing.com": "https://www.investing.com/rss/news_301.rss",
+    "Investing Macro": "https://www.investing.com/rss/news_285.rss",
+}
+
+SOURCE_ALIAS = {
+    "CNBC Markets": "CNBC",
+    "Yahoo Finance": "Yahoo Finance",
+    "MarketWatch Top": "MarketWatch",
+    "Investing.com": "Investing",
+    "Investing Macro": "Investing",
+}
+
+KNOWN_CHART_TICKERS = {
+    "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "GOOG", "META", "TSLA", "AMD", "AVGO",
+    "JPM", "GS", "XOM", "UNH", "LLY", "NFLX", "INTC", "BA", "CAT", "WMT",
+    "BTC-USD", "ETH-USD", "BTC", "ETH",
+    "EURUSD=X", "GBPUSD=X", "USDJPY=X", "EURUSD", "GBPUSD", "USDJPY",
+    "SPX", "NDX", "QQQ", "SPY", "IWM", "GLD", "USO",
+}
+
+NAME_TO_TICKER = {
+    "NVIDIA": "NVDA",
+    "APPLE": "AAPL",
+    "MICROSOFT": "MSFT",
+    "AMAZON": "AMZN",
+    "TESLA": "TSLA",
+    "ALPHABET": "GOOGL",
+    "GOOGLE": "GOOGL",
+    "BITCOIN": "BTC-USD",
+    "ETHEREUM": "ETH-USD",
+    "GOLDMAN": "GS",
+    "JPMORGAN": "JPM",
+    "MORGAN STANLEY": "MS",
+    "NETFLIX": "NFLX",
+    "INTEL": "INTC",
+    "DELL": "DELL",
 }
 
 KEYWORDS_HIGH_IMPACT = [
     "fed", "inflation", "cpi", "rate hike", "rate cut", "nvidia", "earnings",
     "crash", "surge", "war", "tariff", "sec", "treasury", "yield", "biden",
-    "trump", "powell", "geopolitical", "opec", "bankruptcy", "default"
+    "trump", "powell", "geopolitical", "opec", "bankruptcy", "default",
+    "nfp", "payrolls", "ecb", "boj", "gdp", "pce", "fomc",
+]
+
+KEYWORDS_MACRO = [
+    "fed", "inflation", "cpi", "rate hike", "rate cut", "treasury", "yield",
+    "powell", "ecb", "boj", "nfp", "payrolls", "gdp", "pce", "opec", "tariff",
+    "geopolitical", "war", "fomc", "macro", "central bank", "interest rate",
+]
+
+KEYWORDS_EARNINGS = [
+    "earnings", "results", "revenue", "guidance", "eps", "dividend", "buyback",
+    "ipo", "merger", "acquisition", "beat estimates", "miss", "10-q", "10-k",
+    "corporate", "profit", "quarter", "q1", "q2", "q3", "q4",
 ]
 
 KEYWORDS_BULLISH = [
@@ -190,6 +237,36 @@ def analyze_sentiment_and_impact(text: str):
     return sentiment, score, impact
 
 
+def classify_desk_category(text: str) -> str:
+    text_lower = text.lower()
+    if any(keyword in text_lower for keyword in KEYWORDS_MACRO):
+        return "macro"
+    if any(keyword in text_lower for keyword in KEYWORDS_EARNINGS):
+        return "earnings"
+    return "general"
+
+
+def extract_tickers(text: str) -> list[str]:
+    upper = text.upper()
+    found: list[str] = []
+
+    def add(symbol: str) -> None:
+        if symbol and symbol not in EXCLUDED_TICKERS and symbol not in found:
+            found.append(symbol)
+
+    for tag in re.findall(r"\$([A-Z]{1,5}(?:-[A-Z]{2,4})?(?:=X)?)", upper):
+        add(tag)
+    for tag in re.findall(r"\b(BTC-USD|ETH-USD|EURUSD=X|GBPUSD=X|USDJPY=X|EURUSD|GBPUSD|USDJPY)\b", upper):
+        add(tag)
+    for name, ticker in NAME_TO_TICKER.items():
+        if re.search(rf"\b{re.escape(name)}\b", upper):
+            add(ticker)
+    for ticker in KNOWN_CHART_TICKERS:
+        if re.search(rf"\b{re.escape(ticker)}\b", upper):
+            add(ticker)
+    return found[:4]
+
+
 from api.market import router as market_router
 
 app.include_router(market_router)
@@ -210,30 +287,33 @@ def get_free_market_news(
     ticker: Optional[str] = Query(None, description="Filtrar por mención de ticker"),
 ):
     articles = []
-    feeds_to_fetch = {source: RSS_FEEDS[source]} if source and source in RSS_FEEDS else RSS_FEEDS
-    source_alias = {
-        "CNBC Markets": "CNBC",
-        "MarketWatch Top": "MarketWatch",
-        "Investing.com": "MarketWatch",
-        "Investing Forex": "MarketWatch",
-    }
+    if source:
+        feeds_to_fetch = {
+            key: url
+            for key, url in RSS_FEEDS.items()
+            if key == source or SOURCE_ALIAS.get(key) == source
+        } or RSS_FEEDS
+    else:
+        feeds_to_fetch = RSS_FEEDS
 
     for source_name, url in feeds_to_fetch.items():
         try:
             feed = feedparser.parse(url)
-            for entry in feed.entries[:10]:
+            for entry in feed.entries[:14]:
                 title = entry.get("title", "")
                 summary = entry.get("summary", "")
                 full_text = f"{title} {summary}"
-                raw_tickers = list(set(re.findall(r"\b[A-Z]{2,5}\b", title)))
-                detected_tickers = [item for item in raw_tickers if item not in EXCLUDED_TICKERS][:4]
+                detected_tickers = extract_tickers(full_text)
                 if ticker and ticker.upper() not in detected_tickers and ticker.lower() not in full_text.lower():
                     continue
                 sentiment, score, impact = analyze_sentiment_and_impact(full_text)
+                category = classify_desk_category(full_text)
+                if category == "macro" and impact == "low":
+                    impact = "high"
                 articles.append(
                     {
                         "id": entry.get("id", entry.get("link", title)),
-                        "source": source_alias.get(source_name, source_name),
+                        "source": SOURCE_ALIAS.get(source_name, source_name),
                         "title": title,
                         "summary": summary,
                         "url": entry.get("link", "#"),
@@ -242,6 +322,7 @@ def get_free_market_news(
                         "sentiment": sentiment,
                         "score": score,
                         "impact": impact,
+                        "category": category,
                     }
                 )
         except Exception:
