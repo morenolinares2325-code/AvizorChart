@@ -1,6 +1,6 @@
 "use client";
 
-import type { ECharts } from "echarts";
+import type { ChartEngine } from "@/components/chart/kline/engine";
 import { Loader2 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -18,10 +18,10 @@ import type { ChartVisualTheme } from "@/components/chart/chartVisualTheme";
 import { detectAutoDiagonals, detectAutoSR } from "@/lib/chartMath";
 import { fetchCandles, fetchChartPatterns, type CandlePayload, type ChartInterval } from "@/lib/marketApi";
 import { buildChartPatternPrimitives, type ChartPatternPrimitives } from "@/lib/patternPrimitives";
-import type { TradeChartMarker, TradeGuideLevels } from "@/components/chart/ChartCanvas";
+import type { TradeChartMarker, TradeGuideLevels } from "@/components/chart/kline/trade";
 
 const ChartCanvas = dynamic(
-  () => import("@/components/chart/ChartCanvas").then((mod) => mod.ChartCanvas),
+  () => import("@/components/chart/kline/ChartCanvas").then((mod) => mod.ChartCanvas),
   { ssr: false },
 );
 
@@ -83,7 +83,7 @@ export function ChartPane({
   const [enginePatterns, setEnginePatterns] = useState<ChartPatternPrimitives | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [chart, setChart] = useState<ECharts | null>(null);
+  const [chart, setChart] = useState<ChartEngine | null>(null);
   const [viewTick, setViewTick] = useState(0);
   const [flash, setFlash] = useState(false);
   const paneRef = useRef<HTMLDivElement>(null);
@@ -215,7 +215,6 @@ export function ChartPane({
           autoSR={srLevels}
           autoDiagonals={srDiagonals}
           autoPatterns={patternHits}
-          enginePatterns={enginePatterns ?? undefined}
           theme={theme}
           indicatorSettings={indicatorSettings}
           builtIndicators={builtIndicators}

@@ -31,7 +31,7 @@ import {
   type ChartScheme,
   type ChartVisualTheme,
 } from "@/components/chart/chartVisualTheme";
-import type { TradeChartMarker } from "@/components/chart/ChartCanvas";
+import type { TradeChartMarker } from "@/components/chart/kline/trade";
 import { fetchCandles, type CandlePayload, type ChartInterval } from "@/lib/marketApi";
 import { findAsset } from "@/lib/mockScreenerData";
 import {
@@ -217,7 +217,7 @@ export function ReplayLab() {
         return;
       }
       const pick = idleSensei(
-        { ticker, interval, atrPct: vol, streak, side: positionRef.current?.side },
+        { ticker, interval, atrPct: vol, streak },
         memoryRef.current,
       );
       memoryRef.current = rememberSensei(memoryRef.current, pick);

@@ -273,6 +273,11 @@ html[data-avizor-scheme="light"] [aria-label="Volver al menú principal"] img {
   }
 }
 
+.klinecharts-container {
+  width: 100% !important;
+  height: 100% !important;
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;

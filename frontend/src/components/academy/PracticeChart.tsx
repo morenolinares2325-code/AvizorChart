@@ -1,8 +1,10 @@
 "use client";
 
-import type { EChartsOption } from "echarts";
-import ReactECharts from "echarts-for-react";
-import { useMemo } from "react";
+import { dispose, init, type Chart } from "klinecharts";
+import { useEffect, useRef } from "react";
+import { toKLineData } from "@/components/chart/kline/data";
+import { klineStyles } from "@/components/chart/kline/styles";
+import { DEFAULT_CHART_THEME } from "@/components/chart/chartVisualTheme";
 import type { CandlePayload } from "@/lib/marketApi";
 
 const BULL = "#22c55e";
@@ -17,73 +19,57 @@ export function PracticeChart({
   entry: number | null;
   side: "long" | "short" | "flat";
 }) {
-  const option = useMemo(() => {
-    const markLine =
-      entry && side !== "flat"
-        ? {
-            silent: true,
-            symbol: "none",
-            label: { color: "#e4e4e7", fontSize: 10 },
-            data: [{ yAxis: entry, name: side === "long" ? "Entrada LONG" : "Entrada SHORT" }],
-            lineStyle: { color: side === "long" ? BULL : BEAR },
-          }
-        : undefined;
-    const chart: EChartsOption = {
-      backgroundColor: "#08090d",
-      animation: false,
-      tooltip: { trigger: "axis", axisPointer: { type: "cross" } },
-      grid: [
-        { left: 52, right: 16, top: 24, bottom: "28%" },
-        { left: 52, right: 16, top: "78%", height: "16%" },
-      ],
-      xAxis: [
-        {
-          type: "category",
-          data: data.dates,
-          axisLabel: { color: "#71717a", fontSize: 10 },
-          axisLine: { lineStyle: { color: "#18181b" } },
-        },
-        {
-          type: "category",
-          data: data.dates,
-          gridIndex: 1,
-          axisLabel: { color: "#71717a", fontSize: 9 },
-        },
-      ],
-      yAxis: [
-        { scale: true, splitLine: { lineStyle: { color: "#18181b" } }, axisLabel: { color: "#71717a", fontSize: 10 } },
-        { gridIndex: 1, splitLine: { show: false }, axisLabel: { color: "#71717a", fontSize: 9 } },
-      ],
-      dataZoom: [{ type: "inside", xAxisIndex: [0, 1] }],
-      series: [
-        {
-          type: "candlestick",
-          data: data.values,
-          itemStyle: { color: BULL, color0: BEAR, borderColor: BULL, borderColor0: BEAR },
-          markLine,
-        },
-        {
-          type: "bar",
-          xAxisIndex: 1,
-          yAxisIndex: 1,
-          data: data.volumes.map((volume, i) => ({
-            value: volume,
-            itemStyle: {
-              color: data.values[i][1] >= data.values[i][0] ? "rgba(34,197,94,0.5)" : "rgba(239,68,68,0.5)",
-            },
-          })),
-        },
-      ],
+  const hostRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<Chart | null>(null);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) {
+      return;
+    }
+    const chart = init(host, { locale: "en-US", styles: klineStyles(DEFAULT_CHART_THEME, "candles") });
+    if (!chart) {
+      return;
+    }
+    chart.setZoomEnabled(true);
+    chart.setScrollEnabled(true);
+    chart.createIndicator("VOL", false, { id: "pane_vol", height: 64 });
+    chartRef.current = chart;
+    return () => {
+      chartRef.current = null;
+      dispose(chart);
     };
-    return chart;
+  }, []);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) {
+      return;
+    }
+    chart.applyNewData(toKLineData(data, "candles"), false);
+    try {
+      chart.removeOverlay({ id: "practice-entry" });
+    } catch {
+      /* none */
+    }
+    if (entry && side !== "flat") {
+      chart.createOverlay(
+        {
+          name: "priceLine",
+          id: "practice-entry",
+          lock: true,
+          points: [{ value: entry }],
+          extendData: side === "long" ? "Entrada LONG" : "Entrada SHORT",
+          styles: { line: { color: side === "long" ? BULL : BEAR, size: 1.4 } },
+        },
+        "candle_pane",
+      );
+    }
+    const host = hostRef.current;
+    const width = host?.clientWidth || 640;
+    chart.setBarSpace(Math.max(5, Math.min(14, width / Math.min(Math.max(data.values.length, 1), 80))));
+    chart.scrollToRealTime();
   }, [data, entry, side]);
 
-  return (
-    <ReactECharts
-      option={option}
-      notMerge
-      style={{ height: "100%", width: "100%" }}
-      opts={{ renderer: "canvas" }}
-    />
-  );
+  return <div ref={hostRef} className="h-full w-full" />;
 }

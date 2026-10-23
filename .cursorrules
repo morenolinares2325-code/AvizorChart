@@ -6,18 +6,18 @@ Plataforma SaaS de trading profesional orientada a superar a TradingView mediant
 
 ## 2. Estructura de Carpetas
 - /backend: API REST desarrollada en FastAPI (Python). Cálculos matemáticos, universos de mercado y orquestación de agentes IA.
-- /frontend: Next.js 14 (App Router) + TypeScript + Tailwind CSS + Lucide Icons + Apache ECharts.
+- /frontend: Next.js 14 (App Router) + TypeScript + Tailwind CSS + Lucide Icons + KLineChart.
 
 ## 3. Navegación Principal del Frontend
 Barra superior fija estilo TradingView con tema oscuro:
 - Inicio
 - Screener (con 3 subsecciones: 1. Búsqueda Directa, 2. Búsqueda Acciones Ojeador, 3. Búsqueda Multiactivos Ojeador)
-- Mega Gráfico (ECharts interactivo con velas y volumen)
+- Mega Gráfico (KLineChart interactivo con velas y volumen)
 - Mesa de Agentes (Sala de deliberación de los 8 especialistas)
 - Perfil (Configuración, conexión con broker y automatización MT5)
 
 ## 4. Estándares Técnicos
 - Mantener separación estricta: el frontend consume la API en http://localhost:8000.
-- Uso exclusivo de Apache ECharts para la visualización de velas OHLCV.
+- Uso exclusivo de KLineChart para la visualización de velas OHLCV (zoom y desplazamiento nativos).
 - TypeScript estricto para todas las interfaces de datos.
 EOF

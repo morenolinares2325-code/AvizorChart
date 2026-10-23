@@ -1,6 +1,6 @@
 "use client";
 
-import type { ECharts } from "echarts";
+import type { ChartEngine } from "@/components/chart/kline/engine";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChartDrawPropsMenu } from "@/components/chart/ChartDrawPropsMenu";
 import {
@@ -20,7 +20,7 @@ import {
   renderDrawing,
   tradeBoxHandles,
 } from "@/components/chart/drawGeometry";
-import { beginPlotPan } from "@/components/chart/chartScaleInteraction";
+import { beginPlotPan } from "@/components/chart/kline/scale";
 import { pointerOnChart, projectPoint } from "@/components/chart/drawProjection";
 import type { OhlcBar } from "@/lib/chartMath";
 
@@ -30,7 +30,7 @@ interface ChartDrawOverlayProps {
   locked: boolean;
   drawings: UserDrawing[];
   onDrawings: (next: UserDrawing[]) => void;
-  chart: ECharts | null;
+  chart: ChartEngine | null;
   viewTick: number;
   values?: OhlcBar[];
   dates?: string[];
@@ -58,7 +58,7 @@ function defaultLabel(tool: DrawToolId): string | undefined {
 }
 
 function projectDrawing(
-  chart: ECharts | null,
+  chart: ChartEngine | null,
   drawing: UserDrawing,
   width: number,
   height: number,
