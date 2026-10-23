@@ -1,17 +1,14 @@
 "use client";
 
-import { ExternalLink, Radio, Volume2, VolumeX } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { SectionLabel } from "@/components/chart/chartChrome";
+import { ExternalLink, Radio } from "lucide-react";
+import { memo, useEffect, useRef, useState } from "react";
 import {
   WORLD_TV_CHANNELS,
-  WORLD_TV_REGIONS,
-  WORLD_TV_REGION_LABEL,
+  channelFlag,
   worldTvChannel,
   type WorldTvChannelId,
-  type WorldTvRegionId,
 } from "@/components/news/worldTvChannels";
-import { resolveLiveVideo, worldTvEmbedSrc, ytCommand, type TvResolveResult } from "@/lib/tvEngine";
+import { resolveLiveVideo, worldTvEmbedSrc } from "@/lib/tvEngine";
 import { IFRAME_ALLOW } from "@/components/news/newsTheme";
 
 interface WorldTvPlayerProps {
@@ -21,221 +18,133 @@ interface WorldTvPlayerProps {
   onDetach?: () => void;
 }
 
-export function WorldTvPlayer({ channelId, onChannel, detached = false, onDetach }: WorldTvPlayerProps) {
-  const channel = worldTvChannel(channelId);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [region, setRegion] = useState<WorldTvRegionId>(channel.region);
-  const [resolved, setResolved] = useState<TvResolveResult | null>(null);
-  const [busy, setBusy] = useState(true);
-  const [muted, setMuted] = useState(true);
-  const [volume, setVolume] = useState(70);
-  const [failed, setFailed] = useState(false);
+export const WorldTvPlayer = memo(function WorldTvPlayer({
+  detached = false,
+  onDetach,
+}: WorldTvPlayerProps) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col bg-black">
+      <header className="mb-2 flex shrink-0 items-center justify-between gap-2 rounded-md border border-[#1F1F2E] bg-black px-3 py-2">
+        <div className="min-w-0">
+          <p className="flex items-center gap-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-[#00FF66]">
+            <Radio className="h-3.5 w-3.5 shrink-0" />
+            TV Global Trading
+          </p>
+          <p className="mt-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-zinc-500">
+            {WORLD_TV_CHANNELS.length} emisoras · autoplay
+          </p>
+        </div>
+        {onDetach ? (
+          <button
+            type="button"
+            onClick={onDetach}
+            title="Desanclar a ventana flotante"
+            className="inline-flex h-7 items-center gap-1 rounded border border-[#00FF66]/30 px-1.5 font-mono text-[10px] text-[#00FF66] hover:bg-[#00FF66]/10"
+          >
+            <ExternalLink className="h-3 w-3" />
+            Pop-out
+          </button>
+        ) : null}
+      </header>
 
-  const origin = typeof window !== "undefined" ? window.location.origin : undefined;
-  const src = useMemo(
-    () => worldTvEmbedSrc(channel, resolved, { muted, origin }),
-    [channel, resolved, muted, origin],
+      {detached ? (
+        <div className="flex min-h-0 flex-1 items-center justify-center rounded-md border border-[#1F1F2E] bg-black px-4 text-center">
+          <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-zinc-500">
+            Señal desanclada en ventana flotante
+          </p>
+        </div>
+      ) : (
+        <div className="min-h-0 flex-1 overflow-y-auto bg-black pr-0.5">
+          <div className="grid grid-cols-1 gap-2 bg-black sm:grid-cols-2">
+            {WORLD_TV_CHANNELS.map((item) => (
+              <TvStationCard key={item.id} channelId={item.id} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
+});
+
+const TvStationCard = memo(function TvStationCard({ channelId }: { channelId: string }) {
+  const channel = worldTvChannel(channelId);
+  const [src, setSrc] = useState<string | null>(null);
+  const [live, setLive] = useState(false);
+  const lockedSrc = useRef<string | null>(null);
 
   useEffect(() => {
-    setRegion(channel.region);
-  }, [channel.region]);
-
-  useEffect(() => {
-    let live = true;
-    setBusy(true);
-    setFailed(false);
+    let alive = true;
     void resolveLiveVideo(channel).then((result) => {
-      if (!live) {
+      if (!alive || lockedSrc.current) {
         return;
       }
-      setResolved(result);
-      setBusy(false);
-      setFailed(result.source === "none" && !channel.videoId && !channel.youtubeChannelId);
+      const next = worldTvEmbedSrc(channel, result, { muted: true, chrome: false });
+      if (!next) {
+        return;
+      }
+      lockedSrc.current = next;
+      setSrc(next);
+      setLive(Boolean(result.isLive || result.source === "live"));
     });
     return () => {
-      live = false;
+      alive = false;
     };
   }, [channel]);
 
-  useEffect(() => {
-    const node = iframeRef.current;
-    if (!node || muted) {
-      return;
-    }
-    ytCommand(node, "unMute");
-    ytCommand(node, "setVolume", [volume]);
-  }, [muted, volume, src]);
-
-  useEffect(() => {
-    function onMessage(event: MessageEvent) {
-      const raw = typeof event.data === "string" ? event.data : "";
-      if (!raw.includes("onError") && !raw.includes("\"info\":150") && !raw.includes("\"info\":101") && !raw.includes("\"info\":100")) {
-        return;
-      }
-      let code: number | null = null;
-      try {
-        const parsed = JSON.parse(raw) as { event?: string; info?: number };
-        if (parsed.event === "onError" && typeof parsed.info === "number") {
-          code = parsed.info;
-        }
-      } catch {
-        return;
-      }
-      if (code === null) {
-        return;
-      }
-      if (resolved?.source !== "channel-live" && channel.youtubeChannelId) {
-        setResolved({ videoId: null, source: "channel-live", at: Date.now() });
-        setFailed(false);
-        return;
-      }
-      setFailed(true);
-    }
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, [channel.youtubeChannelId, resolved?.source]);
-
-  const regionChannels = WORLD_TV_CHANNELS.filter((item) => item.region === region);
-
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="relative overflow-hidden rounded-md border border-[#1F1F2E] bg-black">
-        <div className="flex items-center justify-between gap-2 border-b border-[#1F1F2E] bg-[#050508] px-2 py-1.5">
-          <p className="flex min-w-0 items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-[#00FF66]">
-            <Radio className="h-3 w-3 shrink-0" />
-            <span className="truncate">{channel.title}</span>
-          </p>
-          {onDetach ? (
-            <button
-              type="button"
-              onClick={onDetach}
-              title="Desanclar a ventana flotante"
-              className="inline-flex h-7 items-center gap-1 rounded border border-[#00FF66]/30 px-1.5 font-mono text-[10px] text-[#00FF66] hover:bg-[#00FF66]/10"
-            >
-              <ExternalLink className="h-3 w-3" />
-              Pop-out
-            </button>
+    <article className="overflow-hidden rounded-lg border border-[#1F1F2E] bg-black">
+      <div className="relative aspect-video overflow-hidden bg-black">
+        {src ? (
+          <FrozenYouTubeFrame src={src} title={channel.title} />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center bg-black">
+            <p className="rounded border border-[#1F1F2E] bg-black px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+              Sintonizando…
+            </p>
+          </div>
+        )}
+      </div>
+      <div className="border-t border-[#1F1F2E] bg-black px-2.5 py-2">
+        <div className="flex items-center gap-1.5">
+          <span className="text-sm leading-none">{channelFlag(channel)}</span>
+          <span className="min-w-0 truncate text-[12px] font-medium text-zinc-100">{channel.label}</span>
+          {live ? (
+            <span className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-full border border-red-500/45 bg-black px-1.5 py-0.5 font-mono text-[8px] font-semibold uppercase tracking-[0.14em] text-red-400">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500" />
+              EN VIVO
+            </span>
           ) : null}
         </div>
-
-        <div className="relative aspect-video w-full bg-black">
-          {detached ? (
-            <Fallback
-              title="Señal desanclada"
-              hint="El streaming está en una ventana flotante. El Mega Gráfico permanece maximizado."
-            />
-          ) : failed || !src ? (
-            <Fallback
-              title="Directo no disponible"
-              hint="El canal está pausado, fuera de aire o bloqueado. Prueba otra emisora de la región."
-            />
-          ) : (
-            <iframe
-              ref={iframeRef}
-              key={`${channel.id}-${muted ? "m" : "u"}-${resolved?.videoId ?? resolved?.source}`}
-              src={src}
-              title={channel.title}
-              className="h-full w-full"
-              allow={IFRAME_ALLOW}
-              referrerPolicy="strict-origin-when-cross-origin"
-              allowFullScreen
-              onLoad={() => {
-                ytCommand(iframeRef.current, "addEventListener", ["onError"]);
-                if (!muted) {
-                  ytCommand(iframeRef.current, "unMute");
-                  ytCommand(iframeRef.current, "setVolume", [volume]);
-                }
-              }}
-            />
-          )}
-          {busy && !detached ? (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/55 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-400">
-              Resolviendo señal…
-            </div>
-          ) : null}
-        </div>
-
-        <div className="flex items-center gap-2 border-t border-[#1F1F2E] bg-[#050508] px-2 py-1.5">
-          <button
-            type="button"
-            onClick={() => setMuted((value) => !value)}
-            className="rounded p-1 text-zinc-400 hover:text-white"
-            title={muted ? "Activar sonido" : "Silenciar"}
-          >
-            {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-          </button>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            value={volume}
-            disabled={muted || detached}
-            onChange={(event) => {
-              const next = Number(event.target.value);
-              setVolume(next);
-              setMuted(false);
-              ytCommand(iframeRef.current, "unMute");
-              ytCommand(iframeRef.current, "setVolume", [next]);
-            }}
-            className="h-1 w-full accent-[#00FF66]"
-            aria-label="Volumen"
-          />
-          <span className="w-8 text-right font-mono text-[10px] text-zinc-500">{muted ? "MUTE" : volume}</span>
-        </div>
+        {channel.format ? (
+          <p className="mt-0.5 truncate font-mono text-[9px] uppercase tracking-wide text-zinc-500">{channel.format}</p>
+        ) : null}
       </div>
-
-      <div className="min-h-0 flex-1 overflow-y-auto pt-2">
-        <SectionLabel>Regiones</SectionLabel>
-        <div className="flex flex-wrap gap-1 px-2 pb-2">
-          {WORLD_TV_REGIONS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setRegion(item.id)}
-              className={`rounded-full px-2 py-0.5 font-mono text-[10px] tracking-tight ${
-                region === item.id
-                  ? "bg-[#00FF66]/15 text-[#00FF66]"
-                  : "text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200"
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-        <p className="px-3 pb-1 font-mono text-[9px] uppercase tracking-[0.14em] text-zinc-600">
-          {WORLD_TV_REGION_LABEL[region]} · {regionChannels.length} emisoras
-        </p>
-        <ul className="space-y-0.5 px-1 pb-3">
-          {regionChannels.map((item) => {
-            const on = item.id === channelId;
-            return (
-              <li key={item.id}>
-                <button
-                  type="button"
-                  onClick={() => onChannel(item.id)}
-                  className={`flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left ${
-                    on ? "bg-[#00FF66]/10 text-[#00FF66]" : "text-zinc-300 hover:bg-white/[0.04] hover:text-white"
-                  }`}
-                >
-                  <span className="truncate text-[12px] tracking-tight">{item.label}</span>
-                  <span className="shrink-0 font-mono text-[9px] uppercase tracking-wide text-zinc-600">Live</span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      </div>
-    </div>
+    </article>
   );
-}
+});
 
-function Fallback({ title, hint }: { title: string; hint: string }) {
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-2 bg-[radial-gradient(ellipse_at_center,rgba(0,255,102,0.08),transparent_65%)] px-4 text-center">
-      <Radio className="h-6 w-6 text-[#00FF66]/70" />
-      <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-200">{title}</p>
-      <p className="max-w-[16rem] text-[11px] leading-relaxed text-zinc-500">{hint}</p>
-    </div>
-  );
-}
+const FrozenYouTubeFrame = memo(
+  function FrozenYouTubeFrame({ src, title }: { src: string; title: string }) {
+    const hostRef = useRef<HTMLDivElement>(null);
+    const mounted = useRef(false);
+
+    useEffect(() => {
+      const host = hostRef.current;
+      if (!host || mounted.current) {
+        return;
+      }
+      mounted.current = true;
+      const iframe = document.createElement("iframe");
+      iframe.src = src;
+      iframe.title = title;
+      iframe.allow = IFRAME_ALLOW;
+      iframe.referrerPolicy = "strict-origin-when-cross-origin";
+      iframe.allowFullscreen = true;
+      iframe.setAttribute("class", "absolute inset-0 h-full w-full border-0");
+      host.appendChild(iframe);
+    }, [src, title]);
+
+    return <div ref={hostRef} className="absolute inset-0" />;
+  },
+  () => true,
+);

@@ -11,8 +11,10 @@ import type { BuiltIndicator } from "@/components/chart/chartIndicatorBuilder";
 import type { IndicatorSettingsMap } from "@/components/chart/chartIndicatorSettings";
 import { WATCHLISTS, type IndicatorId, type RightUtilId, type WatchlistId } from "@/components/chart/chartTypes";
 import {
-  BACKGROUND_PRESETS,
+  backgroundPresetsFor,
   DEFAULT_CHART_THEME,
+  LIGHT_CANVAS,
+  LIGHT_CHROME,
   normalizeNeon,
   saveChartTheme,
   type ChartVisualTheme,
@@ -24,7 +26,22 @@ import { SectionLabel } from "@/components/chart/chartChrome";
 import { NewsWorldTVContainer } from "@/components/news/NewsWorldTVContainer";
 
 function hexColor(value: string): string {
-  return value.startsWith("#") && value.length === 7 ? value : "#22c55e";
+  const raw = value.trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(raw)) {
+    return raw.toLowerCase();
+  }
+  if (/^#[0-9a-fA-F]{3}$/.test(raw)) {
+    return `#${raw[1]}${raw[1]}${raw[2]}${raw[2]}${raw[3]}${raw[3]}`.toLowerCase();
+  }
+  const rgb = raw.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i);
+  if (rgb) {
+    const to = (channel: string) =>
+      Math.round(Math.min(255, Math.max(0, Number(channel))))
+        .toString(16)
+        .padStart(2, "0");
+    return `#${to(rgb[1])}${to(rgb[2])}${to(rgb[3])}`;
+  }
+  return "#ffffff";
 }
 
 interface ChartDockProps {
@@ -63,9 +80,9 @@ export function ChartDock({
   return (
     <aside
       data-chrome="panel"
-      className={`flex shrink-0 flex-col border-l border-[#1F1F2E] bg-[#0A0A0F] ${newsDesk ? "w-[26rem]" : "w-72"}`}
+      className={`flex shrink-0 flex-col border-l border-[#1F1F2E] ${newsDesk ? "w-[min(44rem,46vw)] bg-transparent" : "w-72 bg-[#0A0A0F]"}`}
     >
-      <header className="flex h-10 shrink-0 items-center justify-between border-b border-[#1F1F2E] pr-3">
+      <header className={`flex h-10 shrink-0 items-center justify-between border-b border-[#1F1F2E] pr-3 ${newsDesk ? "bg-black" : ""}`}>
         <SectionLabel>{title}</SectionLabel>
         <button
           type="button"
@@ -120,7 +137,7 @@ export function ChartDock({
 }
 
 function labelFor(tab: RightUtilId): string {
-  if (tab === "news") return "Noticias / World TV";
+  if (tab === "news") return "Noticias/TV";
   if (tab === "editor") return "Editor de gráfico";
   if (tab === "profiles") return "Perfiles";
   if (tab === "watchlist") return "Carteras";
@@ -323,7 +340,7 @@ function EditorPane({
         </div>
         <p className="font-mono text-[9px] uppercase tracking-wide text-zinc-600">Presets</p>
         <div className="flex flex-wrap gap-1">
-          {BACKGROUND_PRESETS.map((preset) => (
+          {backgroundPresetsFor(theme.scheme).map((preset) => (
             <button
               key={preset.id}
               type="button"
@@ -378,7 +395,7 @@ function EditorPane({
 
       <Section title="Textos y elementos externos">
         <p className="text-[11px] leading-relaxed text-zinc-500">
-          Tipografías y contenedores fuera del canvas. Se aplican al instante, también con el neón.
+          Tipografías y contenedores fuera del canvas. Se aplican al instante en barras, paneles y textos.
         </p>
         <ColorRow label="Color de las letras" value={theme.uiText} onChange={(uiText) => patch({ uiText, axis: uiText })} />
         <ColorRow label="Textos secundarios" value={theme.uiMuted} onChange={(uiMuted) => patch({ uiMuted })} />
@@ -408,8 +425,12 @@ function EditorPane({
       <button
         type="button"
         onClick={() => {
-          onTheme(DEFAULT_CHART_THEME);
-          saveChartTheme(DEFAULT_CHART_THEME);
+          const next =
+            theme.scheme === "light"
+              ? { ...DEFAULT_CHART_THEME, ...LIGHT_CHROME, ...LIGHT_CANVAS, scheme: "light" as const }
+              : DEFAULT_CHART_THEME;
+          onTheme(next);
+          saveChartTheme(next);
         }}
         className="font-mono text-[10px] text-zinc-500 hover:text-white"
       >

@@ -56,7 +56,7 @@ export function NewsMarketSidebar({ articles }: { articles: NewsArticle[] }) {
 
   return (
     <div className="space-y-3 p-2">
-      <section className="rounded border border-zinc-800/80 bg-zinc-950/80 p-2">
+      <section className="rounded border border-[#1F1F2E] bg-black p-2">
         <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-500">Sesiones</p>
         <ul className="mt-2 space-y-1.5 font-mono text-[11px]">
           {[
@@ -81,7 +81,7 @@ export function NewsMarketSidebar({ articles }: { articles: NewsArticle[] }) {
         </ul>
       </section>
 
-      <section className="rounded border border-zinc-800/80 bg-zinc-950/80 p-2">
+      <section className="rounded border border-[#1F1F2E] bg-black p-2">
         <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-500">Resumen de mercado</p>
         <div className="mt-2 grid grid-cols-3 gap-1 font-mono text-center text-[11px]">
           <div className="rounded bg-emerald-500/10 py-1.5 text-emerald-300">{pulse.bullish} BULL</div>
@@ -102,7 +102,7 @@ export function NewsMarketSidebar({ articles }: { articles: NewsArticle[] }) {
         </ul>
       </section>
 
-      <section className="rounded border border-zinc-800/80 bg-zinc-950/80 p-2">
+      <section className="rounded border border-[#1F1F2E] bg-black p-2">
         <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-500">Calendario / alertas</p>
         <ul className="mt-2 space-y-2">
           {pulse.agenda.length === 0 ? (

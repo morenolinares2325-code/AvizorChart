@@ -103,4 +103,4 @@ export function isLiveChannelId(value: string): value is LiveChannelId {
 }
 
 export const IFRAME_ALLOW =
-  "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
+  "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen";

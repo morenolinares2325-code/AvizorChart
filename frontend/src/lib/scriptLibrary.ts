@@ -1,4 +1,5 @@
 import type { BuiltIndicator } from "@/components/chart/chartIndicatorBuilder";
+import type { BuilderEChartsPayload } from "@/lib/builderApi";
 import type { ScriptLanguage } from "@/lib/scriptAdapter";
 
 export interface SavedScript {
@@ -8,6 +9,7 @@ export interface SavedScript {
   source: string;
   avizor: string;
   plots: BuiltIndicator[];
+  echarts?: BuilderEChartsPayload;
   updatedAt: number;
 }
 
@@ -42,6 +44,7 @@ export function loadSavedScripts(): SavedScript[] {
         source: String(item.source ?? ""),
         avizor: String(item.avizor ?? ""),
         plots: Array.isArray(item.plots) ? (item.plots as BuiltIndicator[]) : [],
+        echarts: item.echarts as BuilderEChartsPayload | undefined,
         updatedAt: Number(item.updatedAt) || Date.now(),
       }));
   } catch {
@@ -120,4 +123,24 @@ export function plotsForScripts(library: SavedScript[], enabledIds: string[]): B
       enabled: true,
     }));
   });
+}
+
+export function visualsForScripts(library: SavedScript[], enabledIds: string[]): BuilderEChartsPayload {
+  const markLines: unknown[] = [];
+  const markAreas: unknown[] = [];
+  const markPoints: unknown[] = [];
+  const graphic: unknown[] = [];
+  const primitives: BuilderEChartsPayload["primitives"] = [];
+  for (const id of enabledIds) {
+    const payload = library.find((item) => item.id === id)?.echarts;
+    if (!payload) {
+      continue;
+    }
+    markLines.push(...(payload.markLines ?? []));
+    markAreas.push(...(payload.markAreas ?? []));
+    markPoints.push(...(payload.markPoints ?? []));
+    graphic.push(...(payload.graphic ?? []));
+    primitives.push(...(payload.primitives ?? []));
+  }
+  return { markLines, markAreas, markPoints, graphic, primitives };
 }

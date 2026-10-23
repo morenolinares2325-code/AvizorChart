@@ -3,13 +3,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { NewsArticleDetail } from "@/components/news/NewsArticleDetail";
-import { NewsLiveTv } from "@/components/news/NewsLiveTv";
 import { NewsMarketSidebar } from "@/components/news/NewsMarketSidebar";
 import { NewsTelexList } from "@/components/news/NewsTelexList";
 import { NewsToolbar } from "@/components/news/NewsToolbar";
-import { useLiveTv } from "@/components/news/LiveTvContext";
-import { isLiveChannelId, type NewsDeskFilter, type NewsSourceFilter } from "@/components/news/newsTheme";
-import { fetchMarketNews, type NewsArticle } from "@/lib/newsApi";
+import { WorldTvPlayer } from "@/components/news/WorldTvPlayer";
+import {
+  isWorldTvChannelId,
+  WORLD_TV_CHANNELS,
+  type WorldTvChannelId,
+} from "@/components/news/worldTvChannels";
+import { type NewsDeskFilter, type NewsSourceFilter } from "@/components/news/newsTheme";
+import { fetchMarketNews, sortNewsNewestFirst, type NewsArticle } from "@/lib/newsApi";
 
 export function NewsWorkspace() {
   const [articles, setArticles] = useState<NewsArticle[]>([]);
@@ -20,7 +24,7 @@ export function NewsWorkspace() {
   const [source, setSource] = useState<NewsSourceFilter>("Todas");
   const [desk, setDesk] = useState<NewsDeskFilter>("all");
   const searchParams = useSearchParams();
-  const { setChannel } = useLiveTv();
+  const [tvChannel, setTvChannel] = useState<WorldTvChannelId>(WORLD_TV_CHANNELS[0].id);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) {
@@ -59,14 +63,14 @@ export function NewsWorkspace() {
 
   useEffect(() => {
     const tv = searchParams.get("tv");
-    if (tv && isLiveChannelId(tv)) {
-      setChannel(tv);
+    if (tv && isWorldTvChannelId(tv)) {
+      setTvChannel(tv);
     }
-  }, [searchParams, setChannel]);
+  }, [searchParams]);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return articles.filter((article) => {
+    const next = articles.filter((article) => {
       if (source !== "Todas" && article.source !== source) {
         return false;
       }
@@ -85,6 +89,7 @@ export function NewsWorkspace() {
       const haystack = `${article.title} ${article.tickers.join(" ")}`.toLowerCase();
       return haystack.includes(needle);
     });
+    return sortNewsNewestFirst(next);
   }, [articles, query, source, desk]);
 
   useEffect(() => {
@@ -99,7 +104,7 @@ export function NewsWorkspace() {
   const selected = filtered.find((item) => item.id === selectedId) ?? filtered[0] ?? null;
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-[#050508]">
+    <div className="flex h-full w-full flex-col overflow-hidden bg-transparent">
       <NewsToolbar
         query={query}
         onQuery={setQuery}
@@ -112,16 +117,16 @@ export function NewsWorkspace() {
         count={filtered.length}
       />
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[36%_40%_24%]">
-        <section className="min-h-0 overflow-y-auto border-[#00FF66]/10 lg:border-r">
+      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-2">
+        <section className="min-h-0 overflow-y-auto">
           {error && !loading ? (
             <div className="flex h-full items-center justify-center p-6">
-              <div className="max-w-md rounded border border-red-500/30 bg-red-950/30 p-4 text-center">
+              <div className="max-w-md rounded border border-red-500/40 bg-black p-4 text-center">
                 <p className="text-sm text-red-200">{error}</p>
                 <button
                   type="button"
                   onClick={() => void load()}
-                  className="mt-3 rounded border border-zinc-700 px-3 py-1.5 font-mono text-[11px] text-zinc-200 hover:text-white"
+                  className="mt-3 rounded border border-zinc-700 bg-black px-3 py-1.5 font-mono text-[11px] text-zinc-200 hover:text-white"
                 >
                   Reintentar
                 </button>
@@ -135,14 +140,14 @@ export function NewsWorkspace() {
               loading={loading}
             />
           )}
-        </section>
-        <section className="min-h-0 overflow-y-auto border-[#00FF66]/10 lg:border-r">
           <NewsArticleDetail article={selected} loading={loading} />
-        </section>
-        <aside className="min-h-0 overflow-y-auto">
-          <NewsLiveTv />
           <NewsMarketSidebar articles={filtered} />
-        </aside>
+        </section>
+        <section className="min-h-0 overflow-hidden bg-black p-2">
+          <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-[#1F1F2E] bg-black p-2">
+            <WorldTvPlayer channelId={tvChannel} onChannel={setTvChannel} />
+          </div>
+        </section>
       </div>
     </div>
   );

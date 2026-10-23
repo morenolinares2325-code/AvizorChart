@@ -5,8 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { ChartDock } from "@/components/chart/ChartDock";
 import { ChartLeftRail } from "@/components/chart/ChartLeftRail";
 import { ChartPane } from "@/components/chart/ChartPane";
-import { requestChartCenter } from "@/components/chart/chartScaleInteraction";
-import { ChartRangeBar } from "@/components/chart/ChartRangeBar";
+import { requestChartCapture } from "@/components/chart/chartCapture";
+import { requestChartCenter, requestChartRightPad } from "@/components/chart/chartScaleInteraction";
 import { ChartRightRail } from "@/components/chart/ChartRightRail";
 import { ChartToolbar } from "@/components/chart/ChartToolbar";
 import {
@@ -32,7 +32,13 @@ import type { IndicatorSettingsMap, IndicatorStyle } from "@/components/chart/ch
 import {
   chromeVars,
   DEFAULT_CHART_THEME,
+  loadChartScheme,
+  loadChartTheme,
   normalizeChartTheme,
+  saveChartScheme,
+  saveChartTheme,
+  themeForSchemeSwitch,
+  type ChartScheme,
   type ChartVisualTheme,
 } from "@/components/chart/chartVisualTheme";
 import { parseChartInterval, type CandlePayload, type ChartInterval } from "@/lib/marketApi";
@@ -40,7 +46,9 @@ import {
   dropPendingScript,
   loadPendingScripts,
   loadSavedScripts,
+  removeSavedScript,
   plotsForScripts,
+  visualsForScripts,
   SCRIPTS_EVENT,
   type SavedScript,
 } from "@/lib/scriptLibrary";
@@ -76,6 +84,12 @@ function asSplit(value: string | null): SplitMode {
   return 1;
 }
 
+function initialTheme(): ChartVisualTheme {
+  const scheme = loadChartScheme();
+  const stored = loadChartTheme();
+  return themeForSchemeSwitch(stored, scheme);
+}
+
 function emptySlot(id: string, ticker: string, interval: ChartInterval): ChartSlot {
   return {
     id,
@@ -85,7 +99,7 @@ function emptySlot(id: string, ticker: string, interval: ChartInterval): ChartSl
     indicatorSettings: {},
     builtIndicators: [],
     scriptIds: [],
-    theme: DEFAULT_CHART_THEME,
+    theme: initialTheme(),
     range: "1y",
     chartType: "candles",
   };
@@ -135,10 +149,41 @@ export function MegaChartWorkspace() {
   const [rightTool, setRightTool] = useState<RightUtilId | null>(() => asDock(params.get("dock")));
   const [autoSR, setAutoSR] = useState<AutoSROptions>({ horizontal: false, diagonal: false });
   const [autoPatterns, setAutoPatterns] = useState<Set<AutoPatternId>>(() => new Set());
+  const [engineLabels, setEngineLabels] = useState<string[]>([]);
   const [watchlist, setWatchlist] = useState<WatchlistId>("core");
   const [scriptLibrary, setScriptLibrary] = useState<SavedScript[]>([]);
   const focusRef = useRef(0);
   focusRef.current = focus;
+
+  const focused = panes[Math.min(focus, panes.length - 1)] ?? panes[0];
+  const ticker = focused?.ticker ?? initial;
+  const interval = focused?.interval ?? initialInterval;
+  const theme = focused?.theme ?? DEFAULT_CHART_THEME;
+  const scheme: ChartScheme = theme.scheme === "light" ? "light" : "dark";
+  const indicators = useMemo(() => new Set(focused?.indicators ?? []), [focused?.indicators]);
+
+  const applyScheme = useCallback((next: ChartScheme) => {
+    saveChartScheme(next);
+    document.documentElement.dataset.avizorScheme = next;
+    setPanes((current) => {
+      const mapped = current.map((pane) => ({
+        ...pane,
+        theme: themeForSchemeSwitch(pane.theme, next),
+      }));
+      const focusedPane = mapped[Math.min(focusRef.current, mapped.length - 1)] ?? mapped[0];
+      if (focusedPane) {
+        saveChartTheme(focusedPane.theme);
+      }
+      return mapped;
+    });
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.avizorScheme = scheme;
+    return () => {
+      delete document.documentElement.dataset.avizorScheme;
+    };
+  }, [scheme]);
 
   useEffect(() => {
     function refresh() {
@@ -174,13 +219,6 @@ export function MegaChartWorkspace() {
       document.removeEventListener("visibilitychange", refresh);
     };
   }, []);
-
-  const focused = panes[Math.min(focus, panes.length - 1)] ?? panes[0];
-  const ticker = focused?.ticker ?? initial;
-  const interval = focused?.interval ?? initialInterval;
-  const theme = focused?.theme ?? DEFAULT_CHART_THEME;
-  const range = focused?.range ?? "1y";
-  const indicators = useMemo(() => new Set(focused?.indicators ?? []), [focused?.indicators]);
 
   const applySplit = useCallback((mode: SplitMode) => {
     setSplit(mode);
@@ -231,10 +269,10 @@ export function MegaChartWorkspace() {
             ticker,
             quote.values,
             quote.volumes,
-            patternHits.map((item) => item.label),
+            [...patternHits.map((item) => item.label), ...engineLabels],
           )
         : null,
-    [patternHits, quote, ticker],
+    [engineLabels, patternHits, quote, ticker],
   );
 
   const gridClass =
@@ -242,8 +280,14 @@ export function MegaChartWorkspace() {
 
   return (
     <div
-      className="avizor-terminal flex h-full w-full flex-col overflow-hidden bg-[#050508]"
-      style={chromeVars(theme) as CSSProperties}
+      className="avizor-terminal flex h-full w-full flex-col overflow-hidden"
+      data-scheme={scheme}
+      style={
+        {
+          ...chromeVars(theme),
+          backgroundColor: scheme === "light" ? "rgba(255,255,255,0.92)" : "rgba(5,5,8,0.88)",
+        } as CSSProperties
+      }
     >
       <ChartToolbar
         ticker={ticker}
@@ -274,6 +318,16 @@ export function MegaChartWorkspace() {
           }
           patchFocus({ scriptIds: Array.from(next) });
         }}
+        onRemoveScript={(id: string) => {
+          dropPendingScript(id);
+          setScriptLibrary(removeSavedScript(id));
+          setPanes((current) =>
+            current.map((pane) => ({
+              ...pane,
+              scriptIds: pane.scriptIds.filter((scriptId) => scriptId !== id),
+            })),
+          );
+        }}
         quote={quote}
         assetName={assetName}
         autoSR={autoSR}
@@ -300,6 +354,7 @@ export function MegaChartWorkspace() {
           onToggleLock={() => setLocked((value) => !value)}
           onClear={() => setUserDrawings([])}
           onCenter={requestChartCenter}
+          onRightPad={requestChartRightPad}
         />
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -316,6 +371,7 @@ export function MegaChartWorkspace() {
                   ...pane.builtIndicators,
                   ...plotsForScripts(scriptLibrary, pane.scriptIds ?? []),
                 ]}
+                builderVisuals={visualsForScripts(scriptLibrary, pane.scriptIds ?? [])}
                 drawings={drawings}
                 autoSR={autoSR}
                 autoPatterns={autoPatterns}
@@ -328,14 +384,11 @@ export function MegaChartWorkspace() {
                 focused={index === focus}
                 onFocus={() => setFocus(index)}
                 onQuote={setQuote}
+                onEngineLabels={index === focus ? setEngineLabels : undefined}
                 chartType={pane.chartType ?? "candles"}
               />
             ))}
           </div>
-          <ChartRangeBar
-            range={range}
-            onRange={(id) => setPanes((current) => current.map((pane) => ({ ...pane, range: id })))}
-          />
         </div>
 
         {rightTool ? (
@@ -368,6 +421,9 @@ export function MegaChartWorkspace() {
         <ChartRightRail
           active={rightTool}
           onActive={(id) => setRightTool((current) => (current === id ? null : id))}
+          scheme={scheme}
+          onScheme={applyScheme}
+          onCapture={requestChartCapture}
         />
       </div>
     </div>

@@ -6,7 +6,9 @@ export const INDICATOR_GROUPS = [
       { id: "ema9", label: "EMA 9" },
       { id: "ema20", label: "EMA 20" },
       { id: "ema50", label: "EMA 50" },
+      { id: "ema100", label: "EMA 100" },
       { id: "ema200", label: "EMA 200" },
+      { id: "sma20", label: "SMA 20" },
       { id: "sma50", label: "SMA 50" },
       { id: "sma200", label: "SMA 200" },
       { id: "vwap", label: "VWAP" },
@@ -25,6 +27,8 @@ export const INDICATOR_GROUPS = [
       { id: "cci", label: "CCI" },
       { id: "roc", label: "Momento / ROC" },
       { id: "willr", label: "Williams %R" },
+      { id: "adx", label: "ADX / +DI / −DI" },
+      { id: "stoch_rsi", label: "Stochastic RSI" },
     ],
   },
   {
@@ -35,6 +39,7 @@ export const INDICATOR_GROUPS = [
       { id: "atr", label: "ATR 14" },
       { id: "stddev", label: "Desviación estándar" },
       { id: "keltner", label: "Keltner Channels" },
+      { id: "donchian", label: "Donchian Channels" },
     ],
   },
   {
@@ -44,6 +49,8 @@ export const INDICATOR_GROUPS = [
       { id: "vol_hist", label: "Volumen (histograma)" },
       { id: "obv", label: "OBV" },
       { id: "mfi", label: "MFI" },
+      { id: "cmf", label: "Chaikin Money Flow" },
+      { id: "ad_line", label: "Acumulación / Distribución" },
       { id: "vol_pressure", label: "Volume Pressure" },
     ],
   },
@@ -97,7 +104,7 @@ export type RangePresetId = (typeof RANGE_PRESETS)[number]["id"];
 
 export const RIGHT_UTIL_TOOLS = [
   { id: "watchlist", label: "Lista de vigilancia" },
-  { id: "news", label: "Noticias / World TV" },
+  { id: "news", label: "Noticias/TV" },
   { id: "editor", label: "Editor de gráfico" },
   { id: "profiles", label: "Perfiles de gráfico" },
   { id: "alerts", label: "Alertas" },

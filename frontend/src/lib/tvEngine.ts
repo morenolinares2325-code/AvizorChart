@@ -1,218 +1,118 @@
 import type { WorldTvChannel } from "@/components/news/worldTvChannels";
+import type { TvResolveMethod, TvResolvePayload } from "@/lib/tvResolve";
+import { youtubeThumb } from "@/lib/tvResolve";
 
-const CACHE_KEY = "avizor.worldtv.resolve.v2";
-const API_KEY_STORAGE = "avizor.youtube.apikey";
-const TTL_MS = 25 * 60 * 1000;
 const EMBED_HOST = "https://www.youtube-nocookie.com/embed";
 
-export type TvResolveSource = "cache" | "manual" | "oembed" | "proxy" | "api" | "channel-live" | "none";
+export type TvResolveSource = TvResolveMethod | "cache" | "api" | "none";
 
 export interface TvResolveResult {
   videoId: string | null;
+  ytChannelId?: string | null;
   source: TvResolveSource;
   at: number;
+  isLive?: boolean;
+  title?: string;
+  thumbnail?: string;
 }
 
-type CacheMap = Record<string, TvResolveResult>;
-
-function readCache(): CacheMap {
-  if (typeof window === "undefined") {
-    return {};
-  }
-  try {
-    const raw = window.localStorage.getItem(CACHE_KEY);
-    return raw ? (JSON.parse(raw) as CacheMap) : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeCache(map: CacheMap) {
-  try {
-    window.localStorage.setItem(CACHE_KEY, JSON.stringify(map));
-  } catch {
-    /* quota */
-  }
-}
-
-function youtubeApiKey(): string | null {
-  if (typeof window === "undefined") {
+function asPayload(raw: unknown, channelId: string): TvResolvePayload | null {
+  if (!raw || typeof raw !== "object") {
     return null;
   }
-  const value = window.localStorage.getItem(API_KEY_STORAGE)?.trim();
-  return value || null;
-}
-
-function videoIdFromText(raw: string): string | null {
-  const fromThumb = raw.match(/\/vi\/([a-zA-Z0-9_-]{11})\//);
-  if (fromThumb) {
-    return fromThumb[1];
-  }
-  const fromWatch = raw.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
-  if (fromWatch) {
-    return fromWatch[1];
-  }
-  const fromJson = raw.match(/"videoId":"([a-zA-Z0-9_-]{11})"/);
-  if (fromJson) {
-    return fromJson[1];
-  }
-  return null;
-}
-
-async function fetchText(url: string, ms = 4500): Promise<string | null> {
-  const ctrl = new AbortController();
-  const timer = window.setTimeout(() => ctrl.abort(), ms);
-  try {
-    const response = await fetch(url, { signal: ctrl.signal });
-    if (!response.ok) {
-      return null;
-    }
-    return await response.text();
-  } catch {
-    return null;
-  } finally {
-    window.clearTimeout(timer);
-  }
-}
-
-async function resolveOembed(channel: WorldTvChannel): Promise<string | null> {
-  const targets = [
-    channel.youtubeChannelId ? `https://www.youtube.com/channel/${channel.youtubeChannelId}/live` : null,
-    channel.handle ? `https://www.youtube.com/${channel.handle.replace(/^@/, "@")}/live` : null,
-    channel.videoId ? `https://www.youtube.com/watch?v=${channel.videoId}` : null,
-  ].filter((item): item is string => Boolean(item));
-
-  for (const target of targets) {
-    const url = `https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(target)}`;
-    const body = await fetchText(url, 4000);
-    if (!body) {
-      continue;
-    }
-    const id = videoIdFromText(body);
-    if (id) {
-      return id;
-    }
-    try {
-      const parsed = JSON.parse(body) as { thumbnail_url?: string; html?: string };
-      const fromFields = videoIdFromText(`${parsed.thumbnail_url ?? ""} ${parsed.html ?? ""}`);
-      if (fromFields) {
-        return fromFields;
-      }
-    } catch {
-      /* not json */
-    }
-  }
-  return null;
-}
-
-async function resolveProxy(channel: WorldTvChannel): Promise<string | null> {
-  const liveUrl = channel.youtubeChannelId
-    ? `https://www.youtube.com/channel/${channel.youtubeChannelId}/live`
-    : channel.handle
-      ? `https://www.youtube.com/${channel.handle}/live`
-      : null;
-  if (!liveUrl) {
+  const item = raw as Partial<TvResolvePayload>;
+  const method = item.method;
+  if (
+    method !== "live" &&
+    method !== "recent" &&
+    method !== "upload" &&
+    method !== "oembed" &&
+    method !== "manual" &&
+    method !== "channel-live"
+  ) {
     return null;
   }
-  const proxies = [
-    `https://corsproxy.io/?${encodeURIComponent(liveUrl)}`,
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(liveUrl)}`,
-  ];
-  for (const proxy of proxies) {
-    const body = await fetchText(proxy, 5000);
-    if (!body) {
-      continue;
-    }
-    const id = videoIdFromText(body);
-    if (id) {
-      return id;
-    }
-  }
-  return null;
+  return {
+    channelId: item.channelId ?? channelId,
+    videoId: typeof item.videoId === "string" ? item.videoId : null,
+    ytChannelId: typeof item.ytChannelId === "string" ? item.ytChannelId : null,
+    isLive: Boolean(item.isLive),
+    method,
+    title: item.title,
+    thumbnail: item.thumbnail ?? youtubeThumb(typeof item.videoId === "string" ? item.videoId : null) ?? undefined,
+  };
 }
 
-async function resolveApi(channel: WorldTvChannel): Promise<string | null> {
-  const key = youtubeApiKey();
-  if (!key || !channel.youtubeChannelId) {
-    return null;
+function localFallback(channel: WorldTvChannel): TvResolveResult {
+  if (channel.videoId) {
+    return {
+      videoId: channel.videoId,
+      ytChannelId: channel.youtubeChannelId ?? null,
+      source: "manual",
+      at: Date.now(),
+      isLive: false,
+      thumbnail: youtubeThumb(channel.videoId) ?? undefined,
+    };
   }
-  const url = `https://www.googleapis.com/youtube/v3/search?part=id&channelId=${encodeURIComponent(channel.youtubeChannelId)}&eventType=live&type=video&maxResults=1&key=${encodeURIComponent(key)}`;
-  const body = await fetchText(url, 4500);
-  if (!body) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(body) as { items?: { id?: { videoId?: string } }[] };
-    return parsed.items?.[0]?.id?.videoId ?? null;
-  } catch {
-    return null;
-  }
+  return {
+    videoId: null,
+    ytChannelId: channel.youtubeChannelId ?? null,
+    source: channel.youtubeChannelId ? "channel-live" : "none",
+    at: Date.now(),
+    isLive: Boolean(channel.youtubeChannelId),
+  };
 }
 
 export async function resolveLiveVideo(channel: WorldTvChannel): Promise<TvResolveResult> {
-  const cache = readCache();
-  const hit = cache[channel.id];
-  if (hit && Date.now() - hit.at < TTL_MS && (hit.videoId || hit.source === "channel-live" || hit.source === "none")) {
-    return hit;
+  const ctrl = new AbortController();
+  const timer = window.setTimeout(() => ctrl.abort(), 18000);
+  try {
+    const response = await fetch(`/api/tv/resolve?channelId=${encodeURIComponent(channel.id)}`, {
+      cache: "no-store",
+      signal: ctrl.signal,
+    });
+    if (response.ok) {
+      const payload = asPayload(await response.json(), channel.id);
+      if (payload && (payload.videoId || payload.ytChannelId || payload.method === "channel-live" || channel.youtubeChannelId || channel.videoId)) {
+        return {
+          videoId: payload.videoId ?? channel.videoId ?? null,
+          ytChannelId: payload.ytChannelId ?? channel.youtubeChannelId ?? null,
+          source: payload.method,
+          at: Date.now(),
+          isLive: payload.isLive,
+          title: payload.title,
+          thumbnail: payload.thumbnail,
+        };
+      }
+    }
+  } catch {
+    /* local fallback */
+  } finally {
+    window.clearTimeout(timer);
   }
-
-  const oembed = await resolveOembed(channel);
-  if (oembed) {
-    const next = { videoId: oembed, source: "oembed" as const, at: Date.now() };
-    writeCache({ ...cache, [channel.id]: next });
-    return next;
-  }
-
-  const proxy = await resolveProxy(channel);
-  if (proxy) {
-    const next = { videoId: proxy, source: "proxy" as const, at: Date.now() };
-    writeCache({ ...cache, [channel.id]: next });
-    return next;
-  }
-
-  const api = await resolveApi(channel);
-  if (api) {
-    const next = { videoId: api, source: "api" as const, at: Date.now() };
-    writeCache({ ...cache, [channel.id]: next });
-    return next;
-  }
-
-  if (channel.youtubeChannelId) {
-    const next = { videoId: null, source: "channel-live" as const, at: Date.now() };
-    writeCache({ ...cache, [channel.id]: next });
-    return next;
-  }
-
-  if (channel.videoId) {
-    const next = { videoId: channel.videoId, source: "manual" as const, at: Date.now() };
-    writeCache({ ...cache, [channel.id]: next });
-    return next;
-  }
-
-  const none = { videoId: null, source: "none" as const, at: Date.now() };
-  writeCache({ ...cache, [channel.id]: none });
-  return none;
+  return localFallback(channel);
 }
 
 export function worldTvEmbedSrc(
   channel: WorldTvChannel,
   resolved: TvResolveResult | null,
-  options: { muted: boolean; origin?: string },
+  options: { muted: boolean; origin?: string; chrome?: boolean },
 ): string | null {
   const mute = options.muted ? 1 : 0;
-  const origin = options.origin ? `&origin=${encodeURIComponent(options.origin)}` : "";
-  const params = `autoplay=1&mute=${mute}&rel=0&modestbranding=1&playsinline=1&fs=1&enablejsapi=1${origin}`;
+  const origin = "";
+  const live = Boolean(resolved?.isLive || resolved?.source === "live" || resolved?.source === "channel-live");
+  const loop = !live && resolved?.videoId ? `&loop=1&playlist=${encodeURIComponent(resolved.videoId)}` : "";
+  const chrome = options.chrome === false ? "&controls=0&disablekb=1&iv_load_policy=3" : "";
+  const params = `autoplay=1&mute=${mute}&rel=0&modestbranding=1&playsinline=1&fs=1&enablejsapi=1${chrome}${loop}${origin}`;
+  const ytChannel = resolved?.ytChannelId || channel.youtubeChannelId;
   if (resolved?.videoId) {
     return `${EMBED_HOST}/${encodeURIComponent(resolved.videoId)}?${params}`;
   }
-  if (resolved?.source === "channel-live" && channel.youtubeChannelId) {
-    return `${EMBED_HOST}/live_stream?channel=${encodeURIComponent(channel.youtubeChannelId)}&${params}`;
-  }
   if (channel.videoId) {
-    return `${EMBED_HOST}/${encodeURIComponent(channel.videoId)}?${params}`;
+    return `${EMBED_HOST}/${encodeURIComponent(channel.videoId)}?autoplay=1&mute=${mute}&rel=0&modestbranding=1&playsinline=1&fs=1&loop=1&playlist=${encodeURIComponent(channel.videoId)}${chrome}${origin}`;
   }
-  if (channel.youtubeChannelId) {
-    return `${EMBED_HOST}/live_stream?channel=${encodeURIComponent(channel.youtubeChannelId)}&${params}`;
+  if (ytChannel) {
+    return `${EMBED_HOST}/live_stream?channel=${encodeURIComponent(ytChannel)}&${params}`;
   }
   return null;
 }

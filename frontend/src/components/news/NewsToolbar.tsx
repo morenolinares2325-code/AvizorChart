@@ -39,13 +39,17 @@ export function NewsToolbar({
   count,
 }: NewsToolbarProps) {
   return (
-    <div className="flex h-12 shrink-0 items-center gap-2 border-b border-[#00FF66]/15 bg-[#050508] pl-12 pr-3">
+    <div className="pointer-events-none flex h-12 shrink-0 items-center gap-2 border-b border-[#1F1F2E] bg-black pl-12 pr-3">
+      <div className="pointer-events-auto flex min-w-0 flex-1 items-center gap-2">
+      <p className="hidden shrink-0 font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-[#00FF66] sm:block">
+        Noticias/TV
+      </p>
       <div className="relative">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
         <input
           value={query}
           onChange={(event) => onQuery(event.target.value)}
-          className="h-8 w-40 rounded border border-[#00FF66]/20 bg-[#0A0A0F] pl-8 pr-2 font-mono text-xs text-zinc-100 outline-none focus:border-[#00FF66]/50 sm:w-52"
+          className="h-8 w-40 rounded border border-[#00FF66]/20 bg-black pl-8 pr-2 font-mono text-xs text-zinc-100 outline-none focus:border-[#00FF66]/50 sm:w-52"
           placeholder="Título o ticker"
         />
       </div>
@@ -90,11 +94,12 @@ export function NewsToolbar({
         type="button"
         onClick={onRefresh}
         disabled={loading}
-        className="inline-flex h-8 items-center gap-1.5 rounded border border-[#00FF66]/20 bg-[#0A0A0F] px-2.5 font-mono text-[11px] text-zinc-300 transition hover:border-[#00FF66]/40 hover:text-white disabled:opacity-50"
+        className="inline-flex h-8 items-center gap-1.5 rounded border border-[#00FF66]/20 bg-black px-2.5 font-mono text-[11px] text-zinc-300 transition hover:border-[#00FF66]/40 hover:text-white disabled:opacity-50"
       >
         <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
         Actualizar
       </button>
+      </div>
     </div>
   );
 }

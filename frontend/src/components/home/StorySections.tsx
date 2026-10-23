@@ -148,7 +148,7 @@ function SparkBars({ values, up }: { values: readonly number[]; up: boolean }) {
 export function StorySections() {
   return (
     <>
-      <section id="screener-cuantitativo" className="border-b border-zinc-800 bg-zinc-950">
+      <section id="screener-cuantitativo" className="border-b border-zinc-800 bg-zinc-950/70 backdrop-blur-[2px]">
         <div className="mx-auto max-w-[1600px] px-4 py-20">
           <SectionKicker>Sección 02 · Cribado</SectionKicker>
           <SectionTitle>Screener cuantitativo y detección de ruptura</SectionTitle>
@@ -233,10 +233,10 @@ export function StorySections() {
         </div>
       </section>
 
-      <section id="noticias" className="border-b border-zinc-800 bg-zinc-950">
+      <section id="noticias" className="border-b border-zinc-800 bg-zinc-950/70 backdrop-blur-[2px]">
         <div className="mx-auto max-w-[1600px] px-4 py-20">
           <SectionKicker>Sección 04 · Telex</SectionKicker>
-          <SectionTitle>Noticias y análisis de sentimiento local</SectionTitle>
+          <SectionTitle>Noticias/TV y análisis de sentimiento local</SectionTitle>
           <SectionLead>
             El agregador RSS (CNBC, Yahoo Finance, MarketWatch e Investing) clasifica
             impacto y sesgo en el backend, sin llamadas de IA generativa. Filtros
@@ -260,7 +260,7 @@ export function StorySections() {
                 href="/noticias"
                 className="mt-8 inline-flex items-center gap-2 text-sm font-semibold text-bull hover:underline"
               >
-                Abrir mesa de noticias
+                Abrir Noticias/TV
                 <ArrowRight className="h-4 w-4" aria-hidden />
               </Link>
             </article>
@@ -346,7 +346,7 @@ export function StorySections() {
         </div>
       </section>
 
-      <section id="academia-comunidad" className="bg-zinc-950">
+      <section id="academia-comunidad" className="bg-zinc-950/70 backdrop-blur-[2px]">
         <div className="mx-auto max-w-[1600px] px-4 py-20">
           <SectionKicker>Sección 06 · Ecosistema</SectionKicker>
           <SectionTitle>Academia, comunidad y marco institucional</SectionTitle>

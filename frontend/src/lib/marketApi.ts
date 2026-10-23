@@ -1,3 +1,5 @@
+import type { ChartPatternPayload } from "@/lib/patternPrimitives";
+
 export type ChartInterval = string;
 
 export interface CandlePayload {
@@ -273,4 +275,32 @@ export async function fetchCandles(
     console.error("Fallo al conectar con el backend de FastAPI:", err);
     throw err instanceof Error ? err : new Error("Fallo al conectar con el backend de FastAPI.");
   }
+}
+
+export async function fetchChartPatterns(
+  ticker: string,
+  interval: ChartInterval,
+  signal?: AbortSignal,
+  periodOverride?: string,
+): Promise<ChartPatternPayload> {
+  const apiInterval = interval === "1s" ? "1w" : interval;
+  const period = periodOverride
+    ? clampPeriodForInterval(apiInterval, periodOverride)
+    : periodForInterval(apiInterval);
+  const url = `${API_BASE}/api/patterns/${encodeURIComponent(ticker)}?period=${encodeURIComponent(period)}&interval=${encodeURIComponent(apiInterval)}`;
+  const res = await fetch(url, { signal });
+  if (!res.ok) {
+    throw new Error(`Patrones HTTP ${res.status}`);
+  }
+  const json = (await res.json()) as { data?: ChartPatternPayload };
+  const data = json.data;
+  if (!data) {
+    return { pivots: [], supports: [], resistances: [], patterns: [] };
+  }
+  return {
+    pivots: Array.isArray(data.pivots) ? data.pivots : [],
+    supports: Array.isArray(data.supports) ? data.supports : [],
+    resistances: Array.isArray(data.resistances) ? data.resistances : [],
+    patterns: Array.isArray(data.patterns) ? data.patterns : [],
+  };
 }

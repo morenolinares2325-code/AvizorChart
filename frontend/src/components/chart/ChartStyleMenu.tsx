@@ -34,10 +34,10 @@ export function ChartStyleMenu({ open, onToggle, chartType, onChartType }: Chart
       >
         {(() => {
           const Icon = TYPE_ICONS[current.id];
-          return <Icon className="h-3.5 w-3.5 text-zinc-400" strokeWidth={1.75} />;
+          return <Icon className="h-3.5 w-3.5 text-zinc-100" strokeWidth={2.1} />;
         })()}
         <span className="hidden max-w-[7.5rem] truncate sm:inline">{current.label}</span>
-        <ChevronDown className={`h-3 w-3 text-zinc-500 transition ${open ? "rotate-180" : ""}`} />
+        <ChevronDown className={`h-3 w-3 text-zinc-300 transition ${open ? "rotate-180" : ""}`} />
       </button>
       {open ? (
         <div

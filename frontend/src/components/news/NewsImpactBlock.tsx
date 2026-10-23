@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { CandlestickChart } from "lucide-react";
-import { primaryChartSymbol, toChartSymbol, type NewsArticle } from "@/lib/newsApi";
+import { newsBias, primaryChartSymbol, toChartSymbol, type NewsArticle } from "@/lib/newsApi";
 
 const sentimentStyle: Record<NewsArticle["sentiment"], string> = {
   Bullish: "border-[#00FF66]/40 bg-[#00FF66]/10 text-[#00FF66]",
@@ -24,20 +24,38 @@ const impactLabel: Record<NewsArticle["impact"], string> = {
 
 export function NewsImpactBlock({ article }: { article: NewsArticle }) {
   const chartSymbol = primaryChartSymbol(article);
+  const bias = newsBias(article);
   return (
-    <section className="rounded-lg border border-[#00FF66]/20 bg-[#0A0A0F] p-3">
+    <section
+      className={`rounded-lg border bg-black p-3 ${
+        bias.side === "buy"
+          ? "border-[#00FF66]/40"
+          : bias.side === "sell"
+            ? "border-[#FF3366]/40"
+            : "border-[#1F1F2E]"
+      }`}
+    >
       <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">
-        Evaluación de impacto y sentimiento
+        Evaluación de impacto y sesgo
       </p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <span
-          className={`rounded-full border px-2 py-0.5 font-mono text-[11px] font-semibold ${sentimentStyle[article.sentiment]}`}
+          className={`rounded-full border px-2 py-0.5 font-mono text-[11px] font-semibold ${
+            bias.side === "buy"
+              ? "border-[#00FF66]/40 bg-[#00FF66]/10 text-[#00FF66]"
+              : bias.side === "sell"
+                ? "border-[#FF3366]/40 bg-[#FF3366]/10 text-[#FF3366]"
+                : sentimentStyle[article.sentiment]
+          }`}
         >
+          {bias.label} · fuerza {bias.force}
+        </span>
+        <span className={`rounded-full border px-2 py-0.5 font-mono text-[11px] ${sentimentStyle[article.sentiment]}`}>
           {article.sentiment}
         </span>
         <span
           className={`font-mono text-[11px] ${
-            article.impact === "high" ? "text-red-400" : "text-zinc-400"
+            article.impact === "high" ? "text-red-400" : article.impact === "medium" ? "text-amber-300" : "text-zinc-400"
           }`}
         >
           {impactLabel[article.impact]}

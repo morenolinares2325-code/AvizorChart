@@ -1,8 +1,6 @@
 "use client";
 
-import { ChevronDown, ChevronRight, SlidersHorizontal } from "lucide-react";
-import { SectionLabel } from "@/components/chart/chartChrome";
-import Link from "next/link";
+import { ChevronDown, ChevronRight, SlidersHorizontal, Trash2 } from "lucide-react";
 import { useState } from "react";
 import {
   INDICATOR_COLOR_FIELDS,
@@ -24,6 +22,7 @@ interface ChartIndicatorsMenuProps {
   savedScripts: SavedScript[];
   scriptIds: Set<string>;
   onToggleScript: (id: string) => void;
+  onRemoveScript: (id: string) => void;
 }
 
 export function ChartIndicatorsMenu({
@@ -36,8 +35,9 @@ export function ChartIndicatorsMenu({
   savedScripts,
   scriptIds,
   onToggleScript,
+  onRemoveScript,
 }: ChartIndicatorsMenuProps) {
-  const [expanded, setExpanded] = useState<string>("builder");
+  const [expanded, setExpanded] = useState<string>("trend");
   const customOn = savedScripts.filter((item) => scriptIds.has(item.id)).length;
   const count = indicators.size + customOn;
 
@@ -56,7 +56,7 @@ export function ChartIndicatorsMenu({
         <ChevronDown className={`h-3 w-3 transition ${open ? "rotate-180" : ""}`} />
       </button>
       {open ? (
-        <div data-chrome="menu" className="fixed left-[16rem] top-[3.35rem] z-[80] max-h-[min(72vh,32rem)] w-[22.5rem] overflow-y-auto rounded-lg border border-[#1F1F2E] bg-[#0A0A0F] py-1">
+        <div data-chrome="menu" className="fixed left-[16rem] top-[3.35rem] z-[80] max-h-[min(78vh,38rem)] w-[24rem] overflow-y-auto rounded-lg border border-[#1F1F2E] bg-[#0A0A0F] py-1">
           {INDICATOR_GROUPS.map((group) => {
             const shown = expanded === group.id;
             const active = group.items.filter((item) => indicators.has(item.id)).length;
@@ -169,33 +169,32 @@ export function ChartIndicatorsMenu({
             </button>
             {expanded === "builder" ? (
               <div className="space-y-1 px-3 pb-3">
-                <p className="text-[11px] leading-relaxed text-zinc-500">
-                  Indicadores guardados en el IDE. Al guardar, aparecen aquí y se activan en el gráfico.
-                </p>
-                <Link
-                  href="/builder"
-                  className="block font-mono text-[10px] uppercase tracking-wide text-[#00FF66]"
-                >
-                  Abrir IDE Builder
-                </Link>
-                {savedScripts.length === 0 ? (
-                  <p className="text-[11px] text-zinc-600">Aún no hay indicadores del editor. Compila y guarda en /builder.</p>
-                ) : (
-                  savedScripts.map((script) => (
-                    <label key={script.id} className="flex cursor-pointer items-center gap-2 py-1 text-xs text-zinc-300">
+                {savedScripts.map((script) => (
+                  <div key={script.id} className="flex items-center gap-2 py-1 text-xs text-zinc-300">
+                    <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
                       <input
                         type="checkbox"
                         checked={scriptIds.has(script.id)}
                         onChange={() => onToggleScript(script.id)}
                         className="accent-[#00FF66]"
                       />
-                      <span className="min-w-0 flex-1 truncate">{script.name}</span>
-                      <span className="font-mono text-[9px] uppercase text-zinc-600">
-                        {script.language} · {script.plots.length}
-                      </span>
+                      <span className="truncate">{script.name}</span>
                     </label>
-                  ))
-                )}
+                    <button
+                      type="button"
+                      title="Eliminar"
+                      aria-label={`Eliminar ${script.name}`}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onRemoveScript(script.id);
+                      }}
+                      className="shrink-0 p-0.5 text-zinc-600 hover:text-red-400"
+                    >
+                      <Trash2 className="h-3 w-3" strokeWidth={1.75} />
+                    </button>
+                  </div>
+                ))}
               </div>
             ) : null}
           </div>

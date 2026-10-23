@@ -44,8 +44,9 @@ export function CommunityWorkspace() {
   const activeThread = threads.find((item) => item.id === threadId) ?? threads[0] ?? FORUM_THREADS[0];
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-[#050508]">
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-zinc-800/80 pl-12 pr-3">
+    <div className="flex h-full w-full flex-col overflow-hidden bg-transparent">
+      <header className="pointer-events-none flex h-11 shrink-0 items-center gap-2 border-b border-zinc-800/80 bg-[#0A0A0F]/75 backdrop-blur-md pl-12 pr-3">
+        <div className="pointer-events-auto flex min-w-0 flex-1 items-center gap-2">
         <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">Comunidad</p>
         <div className="flex h-8 overflow-x-auto rounded border border-zinc-800 p-0.5">
           {(
@@ -67,6 +68,7 @@ export function CommunityWorkspace() {
               {item.label}
             </button>
           ))}
+        </div>
         </div>
       </header>
 

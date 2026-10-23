@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { ImmersiveMark } from "@/components/layout/ImmersiveMark";
 import { Navbar } from "@/components/layout/Navbar";
 import { SupportWidget } from "@/components/layout/SupportWidget";
+import { TickerCascadeBackdrop } from "@/components/layout/TickerCascadeBackdrop";
 
 export function ChromeFrame({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -18,7 +19,10 @@ export function ChromeFrame({ children }: { children: React.ReactNode }) {
     return (
       <>
         <Navbar />
-        <main className="min-h-screen pt-14">{children}</main>
+        <main className="relative min-h-screen pt-14">
+          <TickerCascadeBackdrop />
+          <div className="relative z-[1]">{children}</div>
+        </main>
         <SupportWidget />
       </>
     );
@@ -26,8 +30,11 @@ export function ChromeFrame({ children }: { children: React.ReactNode }) {
 
   return (
     <>
+      <main className="relative h-screen w-screen overflow-hidden bg-[#050508]">
+        <TickerCascadeBackdrop />
+        <div className="relative z-[1] h-full w-full">{children}</div>
+      </main>
       <ImmersiveMark />
-      <main className="h-screen w-screen overflow-hidden bg-[#050508]">{children}</main>
     </>
   );
 }

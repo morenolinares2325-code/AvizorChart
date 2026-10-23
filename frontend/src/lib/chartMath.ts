@@ -71,17 +71,35 @@ export function macdSeries(
   signal: (number | null)[];
   hist: (number | null)[];
 } {
-  const fast = emaSeries(source, fastPeriod);
-  const slow = emaSeries(source, slowPeriod);
+  const fast = emaSeries(source, Math.max(1, fastPeriod));
+  const slow = emaSeries(source, Math.max(1, slowPeriod));
   const macd = source.map((_, i) =>
     fast[i] !== null && slow[i] !== null ? (fast[i] as number) - (slow[i] as number) : null,
   );
-  const macdNumeric = macd.map((value) => value ?? 0);
-  const signalRaw = emaSeries(macdNumeric, signalPeriod);
-  const signal = macd.map((value, i) => (value === null ? null : signalRaw[i]));
-  const hist = macd.map((value, i) =>
-    value !== null && signal[i] !== null ? value - (signal[i] as number) : null,
-  );
+  const signal: (number | null)[] = macd.map(() => null);
+  const hist: (number | null)[] = macd.map(() => null);
+  const first = macd.findIndex((value) => value != null);
+  const seed = Math.max(1, signalPeriod);
+  if (first >= 0 && first + seed - 1 < macd.length) {
+    const seedEnd = first + seed - 1;
+    let acc = 0;
+    for (let i = first; i <= seedEnd; i += 1) {
+      acc += macd[i] as number;
+    }
+    acc /= seed;
+    signal[seedEnd] = acc;
+    hist[seedEnd] = (macd[seedEnd] as number) - acc;
+    const k = 2 / (seed + 1);
+    for (let i = seedEnd + 1; i < macd.length; i += 1) {
+      const value = macd[i];
+      if (value == null) {
+        continue;
+      }
+      acc = value * k + acc * (1 - k);
+      signal[i] = acc;
+      hist[i] = value - acc;
+    }
+  }
   return { macd, signal, hist };
 }
 
@@ -276,18 +294,28 @@ export function stochastic(
   kPeriod = 14,
   dPeriod = 3,
 ): { k: (number | null)[]; d: (number | null)[] } {
+  const kLen = Math.max(1, Math.round(kPeriod) || 14);
+  const dLen = Math.max(1, Math.round(dPeriod) || 3);
   const k: (number | null)[] = values.map(() => null);
-  for (let i = kPeriod - 1; i < values.length; i += 1) {
+  for (let i = kLen - 1; i < values.length; i += 1) {
+    const bar = values[i];
+    if (!bar) {
+      continue;
+    }
     let hh = -Infinity;
     let ll = Infinity;
-    for (let j = i - kPeriod + 1; j <= i; j += 1) {
-      hh = Math.max(hh, values[j][3]);
-      ll = Math.min(ll, values[j][2]);
+    for (let j = i - kLen + 1; j <= i; j += 1) {
+      const windowBar = values[j];
+      if (!windowBar) {
+        continue;
+      }
+      hh = Math.max(hh, windowBar[3]);
+      ll = Math.min(ll, windowBar[2]);
     }
-    k[i] = hh === ll ? 50 : ((values[i][1] - ll) / (hh - ll)) * 100;
+    k[i] = hh === ll ? 50 : ((bar[1] - ll) / (hh - ll)) * 100;
   }
   const numeric = k.map((value) => value ?? 0);
-  const dRaw = smaSeries(numeric, dPeriod);
+  const dRaw = smaSeries(numeric, dLen);
   const d = k.map((value, i) => (value === null ? null : dRaw[i]));
   return { k, d };
 }
@@ -367,6 +395,163 @@ export function mfiSeries(values: OhlcBar[], volumes: number[], period = 14): (n
       neg += rawFlow[j].neg;
     }
     out[i] = neg === 0 ? 100 : 100 - 100 / (1 + pos / neg);
+  }
+  return out;
+}
+
+export function donchian(values: OhlcBar[], period = 20): {
+  upper: (number | null)[];
+  lower: (number | null)[];
+  mid: (number | null)[];
+} {
+  const upper: (number | null)[] = values.map(() => null);
+  const lower: (number | null)[] = values.map(() => null);
+  const mid: (number | null)[] = values.map(() => null);
+  const len = Math.max(1, period);
+  for (let i = len - 1; i < values.length; i += 1) {
+    let hi = -Infinity;
+    let lo = Infinity;
+    for (let j = i - len + 1; j <= i; j += 1) {
+      const bar = values[j];
+      if (!bar) {
+        continue;
+      }
+      hi = Math.max(hi, bar[3]);
+      lo = Math.min(lo, bar[2]);
+    }
+    if (!Number.isFinite(hi) || !Number.isFinite(lo)) {
+      continue;
+    }
+    upper[i] = hi;
+    lower[i] = lo;
+    mid[i] = (hi + lo) / 2;
+  }
+  return { upper, lower, mid };
+}
+
+export function adxSeries(
+  values: OhlcBar[],
+  period = 14,
+): { adx: (number | null)[]; plus: (number | null)[]; minus: (number | null)[] } {
+  const adx: (number | null)[] = values.map(() => null);
+  const plus: (number | null)[] = values.map(() => null);
+  const minus: (number | null)[] = values.map(() => null);
+  if (values.length < period + 2) {
+    return { adx, plus, minus };
+  }
+  const tr: number[] = values.map(() => 0);
+  const pdm: number[] = values.map(() => 0);
+  const mdm: number[] = values.map(() => 0);
+  for (let i = 1; i < values.length; i += 1) {
+    const high = values[i][3];
+    const low = values[i][2];
+    const prevClose = values[i - 1][1];
+    const prevHigh = values[i - 1][3];
+    const prevLow = values[i - 1][2];
+    tr[i] = Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose));
+    const up = high - prevHigh;
+    const down = prevLow - low;
+    pdm[i] = up > down && up > 0 ? up : 0;
+    mdm[i] = down > up && down > 0 ? down : 0;
+  }
+  let str = 0;
+  let sp = 0;
+  let sm = 0;
+  for (let i = 1; i <= period; i += 1) {
+    str += tr[i];
+    sp += pdm[i];
+    sm += mdm[i];
+  }
+  const dx: number[] = values.map(() => 0);
+  for (let i = period; i < values.length; i += 1) {
+    if (i > period) {
+      str = str - str / period + tr[i];
+      sp = sp - sp / period + pdm[i];
+      sm = sm - sm / period + mdm[i];
+    }
+    const pdi = str ? (100 * sp) / str : 0;
+    const mdi = str ? (100 * sm) / str : 0;
+    plus[i] = pdi;
+    minus[i] = mdi;
+    const den = pdi + mdi;
+    dx[i] = den ? (100 * Math.abs(pdi - mdi)) / den : 0;
+  }
+  let acc = 0;
+  let count = 0;
+  for (let i = period; i < values.length; i += 1) {
+    acc += dx[i];
+    count += 1;
+    if (count === period) {
+      adx[i] = acc / period;
+    } else if (count > period) {
+      adx[i] = (((adx[i - 1] as number) * (period - 1)) + dx[i]) / period;
+    }
+  }
+  return { adx, plus, minus };
+}
+
+export function stochRsiSeries(source: number[], rsiPeriod = 14, stochPeriod = 14): (number | null)[] {
+  const rsi = rsiSeries(source, rsiPeriod);
+  const out: (number | null)[] = source.map(() => null);
+  const len = Math.max(1, stochPeriod);
+  for (let i = 0; i < rsi.length; i += 1) {
+    if (i < rsiPeriod + len - 1) {
+      continue;
+    }
+    let hi = -Infinity;
+    let lo = Infinity;
+    for (let j = i - len + 1; j <= i; j += 1) {
+      const value = rsi[j];
+      if (value == null) {
+        continue;
+      }
+      hi = Math.max(hi, value);
+      lo = Math.min(lo, value);
+    }
+    const now = rsi[i];
+    if (now == null || !Number.isFinite(hi) || !Number.isFinite(lo)) {
+      continue;
+    }
+    out[i] = hi === lo ? 50 : ((now - lo) / (hi - lo)) * 100;
+  }
+  return out;
+}
+
+export function cmfSeries(values: OhlcBar[], volumes: number[], period = 20): (number | null)[] {
+  const out: (number | null)[] = values.map(() => null);
+  const flow = values.map((bar, i) => {
+    const high = bar[3];
+    const low = bar[2];
+    const close = bar[1];
+    const span = high - low;
+    const vol = volumes[i] ?? 0;
+    const mfm = span === 0 ? 0 : ((close - low) - (high - close)) / span;
+    return { mfv: mfm * vol, vol };
+  });
+  const len = Math.max(1, period);
+  for (let i = len - 1; i < values.length; i += 1) {
+    let mfv = 0;
+    let vol = 0;
+    for (let j = i - len + 1; j <= i; j += 1) {
+      mfv += flow[j].mfv;
+      vol += flow[j].vol;
+    }
+    out[i] = vol === 0 ? 0 : mfv / vol;
+  }
+  return out;
+}
+
+export function adLineSeries(values: OhlcBar[], volumes: number[]): (number | null)[] {
+  const out: (number | null)[] = values.map(() => null);
+  let acc = 0;
+  for (let i = 0; i < values.length; i += 1) {
+    const high = values[i][3];
+    const low = values[i][2];
+    const close = values[i][1];
+    const span = high - low;
+    const mfm = span === 0 ? 0 : ((close - low) - (high - close)) / span;
+    acc += mfm * (volumes[i] ?? 0);
+    out[i] = acc;
   }
   return out;
 }

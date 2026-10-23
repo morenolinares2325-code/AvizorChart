@@ -12,8 +12,8 @@ interface NewsArticleDetailProps {
 export function NewsArticleDetail({ article, loading }: NewsArticleDetailProps) {
   if (loading) {
     return (
-      <div className="animate-pulse space-y-3 p-4">
-        <div className="h-24 rounded border border-zinc-800 bg-zinc-950" />
+      <div className="m-2 animate-pulse space-y-3 rounded-lg border border-[#1F1F2E] bg-black p-4">
+        <div className="h-24 rounded border border-zinc-800 bg-black" />
         <div className="h-4 w-3/4 rounded bg-zinc-800" />
         <div className="h-3 w-full rounded bg-zinc-800" />
         <div className="h-3 w-5/6 rounded bg-zinc-800" />
@@ -23,11 +23,15 @@ export function NewsArticleDetail({ article, loading }: NewsArticleDetailProps) 
   }
 
   if (!article) {
-    return <p className="p-6 font-mono text-xs text-zinc-500">Selecciona un teletipo para ver el detalle.</p>;
+    return (
+      <p className="m-2 rounded-lg border border-[#1F1F2E] bg-black p-6 font-mono text-xs text-zinc-500">
+        Selecciona un teletipo para ver el detalle.
+      </p>
+    );
   }
 
   return (
-    <div className="space-y-4 p-4">
+    <div className="m-2 space-y-4 rounded-lg border border-[#1F1F2E] bg-black p-4">
       <NewsImpactBlock article={article} />
       <header>
         <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-500">
@@ -42,7 +46,7 @@ export function NewsArticleDetail({ article, loading }: NewsArticleDetailProps) 
         href={article.url}
         target="_blank"
         rel="noreferrer"
-        className="inline-flex items-center gap-1.5 rounded border border-[#00FF66]/25 bg-[#0A0A0F] px-3 py-1.5 font-mono text-[11px] text-[#00FF66] hover:border-[#00FF66]/50"
+        className="inline-flex items-center gap-1.5 rounded border border-[#00FF66]/25 bg-black px-3 py-1.5 font-mono text-[11px] text-[#00FF66] hover:border-[#00FF66]/50"
       >
         Abrir fuente original
         <ExternalLink className="h-3.5 w-3.5" />

@@ -41,7 +41,7 @@ export function ChartTimeframeMenu({
         className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#1F1F2E] bg-[#0A0A0F] px-2 font-mono text-[11px] tracking-tight text-white hover:border-[#00FF66]/40"
       >
         {label}
-        <ChevronDown className={`h-3 w-3 text-zinc-500 transition ${open ? "rotate-180" : ""}`} />
+        <ChevronDown className={`h-3 w-3 text-zinc-300 transition ${open ? "rotate-180" : ""}`} />
       </button>
       {open ? (
         <div data-chrome="menu" className="absolute left-0 top-full z-[80] mt-1 w-40 rounded-lg border border-[#1F1F2E] bg-[#0A0A0F] py-1">

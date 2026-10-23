@@ -84,7 +84,7 @@ export function NewsLiveTv({ compact = false }: { compact?: boolean }) {
       <select
         value={channel}
         onChange={(event) => setChannel(event.target.value as typeof channel)}
-        className="mb-1.5 h-8 w-full rounded border border-[#00FF66]/25 bg-[#0A0A0F] px-2 font-mono text-[11px] text-zinc-100 outline-none focus:border-[#00FF66]/60"
+        className="mb-1.5 h-8 w-full rounded border border-[#00FF66]/25 bg-black px-2 font-mono text-[11px] text-zinc-100 outline-none focus:border-[#00FF66]/60"
       >
         {LIVE_CHANNELS.map((item, index) => (
           <option key={item.id} value={item.id}>
@@ -101,8 +101,8 @@ export function NewsLiveTv({ compact = false }: { compact?: boolean }) {
             onClick={() => setChannel(item.id)}
             className={`rounded border px-1.5 py-0.5 font-mono text-[10px] transition ${
               channel === item.id
-                ? "border-[#00FF66]/40 bg-[#00FF66]/10 text-[#00FF66]"
-                : "border-transparent text-zinc-500 hover:border-zinc-700 hover:text-zinc-200"
+                ? "border-[#00FF66]/40 bg-black text-[#00FF66]"
+                : "border-[#1F1F2E] bg-black text-zinc-500 hover:border-zinc-600 hover:text-zinc-200"
             }`}
           >
             {item.label}
@@ -131,7 +131,7 @@ export function NewsLiveTv({ compact = false }: { compact?: boolean }) {
           <LiveIframe channel={current} frameKey={`${channel}-dock`} />
         </div>
       ) : (
-        <p className="mt-2 rounded border border-dashed border-[#00FF66]/20 bg-[#0A0A0F] px-2 py-6 text-center font-mono text-[10px] uppercase tracking-widest text-zinc-500">
+        <p className="mt-2 rounded border border-dashed border-[#00FF66]/20 bg-black px-2 py-6 text-center font-mono text-[10px] uppercase tracking-widest text-zinc-500">
           {!playing
             ? "Señal en pausa"
             : size === "mini"

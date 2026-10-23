@@ -4,10 +4,10 @@ export function DrawToolGlyph({ id, active }: { id: DrawToolId; active?: boolean
   return (
     <svg
       viewBox="0 0 20 20"
-      className={`h-[18px] w-[18px] shrink-0 ${active ? "text-[#00FF66]" : "text-zinc-400"}`}
+      className={`h-[18px] w-[18px] shrink-0 ${active ? "text-[#00FF66]" : "text-zinc-200"}`}
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.55"
+      strokeWidth="1.95"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden
@@ -90,6 +90,28 @@ function glyph(id: DrawToolId) {
         </>
       );
     case "fib_circle":
+    case "concentric_circles":
+      return (
+        <>
+          <circle cx="10" cy="10" r="6.4" />
+          <circle cx="10" cy="10" r="4.2" />
+          <circle cx="10" cy="10" r="2.2" />
+        </>
+      );
+    case "circle":
+    case "circle_center":
+      return <circle cx="10" cy="10" r="6.2" />;
+    case "circle_filled":
+      return <circle cx="10" cy="10" r="6.2" fill="currentColor" fillOpacity="0.28" />;
+    case "circle_ring":
+      return (
+        <>
+          <circle cx="10" cy="10" r="6.4" />
+          <circle cx="10" cy="10" r="3.4" />
+        </>
+      );
+    case "arc":
+      return <path d="M4 13 A6.4 6.4 0 0 1 16 8" />;
     case "oval":
       return <ellipse cx="10" cy="10" rx="6.5" ry="4.6" />;
     case "fib_spiral":

@@ -7,11 +7,19 @@ import {
   colorForTool,
   cursorForTool,
   findTool,
+  inkForScheme,
   type DrawPoint,
+  isTradeBox,
   type DrawToolId,
   type UserDrawing,
 } from "@/components/chart/chartDrawTools";
-import { hitTestDrawing, renderDrawing } from "@/components/chart/drawGeometry";
+import {
+  applyTradeBoxHandle,
+  completeTradeBox,
+  hitTestDrawing,
+  renderDrawing,
+  tradeBoxHandles,
+} from "@/components/chart/drawGeometry";
 import { beginPlotPan } from "@/components/chart/chartScaleInteraction";
 import { pointerOnChart, projectPoint } from "@/components/chart/drawProjection";
 import type { OhlcBar } from "@/lib/chartMath";
@@ -26,6 +34,7 @@ interface ChartDrawOverlayProps {
   viewTick: number;
   values?: OhlcBar[];
   dates?: string[];
+  scheme?: "dark" | "light";
 }
 
 function newId(): string {
@@ -71,6 +80,7 @@ export function ChartDrawOverlay({
   viewTick,
   values,
   dates,
+  scheme = "dark",
 }: ChartDrawOverlayProps) {
   const [draft, setDraft] = useState<UserDrawing | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -83,7 +93,8 @@ export function ChartDrawOverlay({
   const handleDragRef = useRef<{ id: string; index: number } | null>(null);
   const panRef = useRef<ReturnType<typeof beginPlotPan>>(null);
   const def = findTool(tool);
-  const interactive = tool !== "cursor" && !locked;
+  const drawingMode = tool !== "cursor" && !locked;
+  const interactive = !locked;
   drawingsRef.current = drawings;
 
   function putDraft(next: UserDrawing | null) {
@@ -188,7 +199,10 @@ export function ChartDrawOverlay({
     const projectedSelected = selected ? projectDrawing(chart, selected, size.width, size.height, dates) : null;
 
     if (projectedSelected && selected && !draftRef.current) {
-      const handleIndex = projectedSelected.points.findIndex(
+      const anchors = isTradeBox(selected.tool)
+        ? tradeBoxHandles(projectedSelected)
+        : projectedSelected.points;
+      const handleIndex = anchors.findIndex(
         (anchor) => Math.hypot(anchor.x - point.x, anchor.y - point.y) <= 14,
       );
       if (handleIndex >= 0 && !locked) {
@@ -213,7 +227,18 @@ export function ChartDrawOverlay({
       setSelectedId(null);
     }
 
-    if (tool === "cursor" || locked || !interactive || !def) {
+    if (tool === "cursor" || locked || !drawingMode || !def) {
+      const session = beginPlotPan(chart, event.clientX, event.clientY, {
+        onView: () => setPanTick((value) => value + 1),
+      });
+      if (session) {
+        panRef.current = session;
+        try {
+          event.currentTarget.setPointerCapture(event.pointerId);
+        } catch {
+          /* ignore */
+        }
+      }
       return;
     }
     event.preventDefault();
@@ -230,7 +255,7 @@ export function ChartDrawOverlay({
         id: newId(),
         tool,
         points: def.id === "horizontal" || def.id === "vertical" ? [point] : [point, point],
-        color: colorForTool(tool),
+        color: colorForTool(tool, scheme),
         strokeWidth: 2,
         label: defaultLabel(tool),
         complete: false,
@@ -246,7 +271,7 @@ export function ChartDrawOverlay({
           id: newId(),
           tool,
           points: [point],
-          color: colorForTool(tool),
+          color: colorForTool(tool, scheme),
           strokeWidth: 2,
           label: defaultLabel(tool),
           complete: false,
@@ -284,6 +309,9 @@ export function ChartDrawOverlay({
           if (item.id !== handle.id) {
             return item;
           }
+          if (isTradeBox(item.tool)) {
+            return applyTradeBoxHandle(item, handle.index, point);
+          }
           const points = item.points.map((anchor, index) => (index === handle.index ? point : anchor));
           return { ...item, points };
         }),
@@ -291,7 +319,7 @@ export function ChartDrawOverlay({
       return;
     }
     const current = draftRef.current;
-    if (!interactive || !current || !dragRef.current) {
+    if (!drawingMode || !current || !dragRef.current) {
       return;
     }
     if (def?.capture === "freehand") {
@@ -301,6 +329,10 @@ export function ChartDrawOverlay({
     if (def?.capture === "drag") {
       if (current.tool === "horizontal" || current.tool === "vertical") {
         putDraft({ ...current, points: [point] });
+        return;
+      }
+      if (isTradeBox(current.tool)) {
+        putDraft({ ...current, points: completeTradeBox(current.points[0], point, current.tool) });
         return;
       }
       putDraft({ ...current, points: [current.points[0], point] });
@@ -318,7 +350,7 @@ export function ChartDrawOverlay({
       return;
     }
     const current = draftRef.current;
-    if (!interactive || !current || !def) {
+    if (!drawingMode || !current || !def) {
       return;
     }
     if (def.capture === "drag" || def.capture === "freehand") {
@@ -331,7 +363,7 @@ export function ChartDrawOverlay({
     return source.map((item) => projectDrawing(chart, item, size.width, size.height, dates));
   }, [chart, dates, draft, drawings, panTick, size.height, size.width, viewTick]);
 
-  const hint = interactive && def ? def.hint : null;
+  const hint = drawingMode && def ? def.hint : null;
   const selected = live.find((item) => item.id === selectedId) ?? null;
 
   return (
@@ -341,16 +373,27 @@ export function ChartDrawOverlay({
       style={{ transform: "translateZ(0)", willChange: "transform" }}
     >
       {hint ? (
-        <div className="pointer-events-none absolute left-3 top-2 rounded-md border border-[#1F1F2E] bg-[#0A0A0F]/92 px-2.5 py-1 font-mono text-[10px] tracking-wide text-zinc-300 shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
-          <span className="font-semibold text-white">{def?.label}</span>
-          <span className="text-zinc-500"> · {hint}</span>
-          {magnet ? <span className="text-[#00FF66]"> · Imán</span> : null}
+        <div
+          className="pointer-events-none absolute left-3 top-2 rounded-md border px-2.5 py-1 font-mono text-[10px] tracking-wide"
+          style={{
+            borderColor: scheme === "light" ? "#d4d4d8" : "#3f3f46",
+            background: scheme === "light" ? "rgba(255,255,255,0.92)" : "rgba(10,10,15,0.92)",
+            color: scheme === "light" ? "#3f3f46" : "#d4d4d8",
+            boxShadow:
+              scheme === "light" ? "0 8px 24px rgba(24,24,27,0.12)" : "0 8px 24px rgba(0,0,0,0.35)",
+          }}
+        >
+          <span className="font-semibold" style={{ color: scheme === "light" ? "#18181b" : "#f4f4f5" }}>
+            {def?.label}
+          </span>
+          <span> · {hint}</span>
+          {magnet ? <span style={{ color: scheme === "light" ? "#166534" : "#00FF66" }}> · Imán</span> : null}
         </div>
       ) : null}
       <svg
         className="absolute inset-0 h-full w-full"
         style={{
-          pointerEvents: interactive ? "auto" : "none",
+          pointerEvents: drawingMode || selectedId ? "auto" : "none",
           cursor: cursorForTool(tool, locked),
         }}
         onPointerDown={onPointerDown}
@@ -376,20 +419,27 @@ export function ChartDrawOverlay({
         {live.map((item) => (
           <g
             key={item.id}
+            style={{ pointerEvents: "auto" }}
             opacity={selectedId && item.id !== selectedId ? 0.55 : 1}
-            dangerouslySetInnerHTML={{ __html: renderDrawing(item, size) }}
+            dangerouslySetInnerHTML={{
+              __html: renderDrawing(
+                { ...item, color: inkForScheme(item.color, scheme) },
+                size,
+                scheme === "light" ? "#ffffff" : "#050508",
+              ),
+            }}
           />
         ))}
         {selected
-          ? selected.points.map((anchor, index) => (
-              <g key={`h-${selected.id}-${index}`}>
+          ? (isTradeBox(selected.tool) ? tradeBoxHandles(selected) : selected.points).map((anchor, index) => (
+              <g key={`h-${selected.id}-${index}`} style={{ pointerEvents: "auto" }}>
                 <circle cx={anchor.x} cy={anchor.y} r="11" fill="rgba(0,229,255,0.16)" />
                 <circle
                   cx={anchor.x}
                   cy={anchor.y}
                   r="5.2"
-                  fill="#0A0A0F"
-                  stroke="#00E5FF"
+                  fill={scheme === "light" ? "#ffffff" : "#0A0A0F"}
+                  stroke={scheme === "light" ? "#18181b" : "#00E5FF"}
                   strokeWidth="1.7"
                 />
               </g>
@@ -400,6 +450,7 @@ export function ChartDrawOverlay({
         <ChartDrawPropsMenu
           color={selected.color}
           strokeWidth={selected.strokeWidth}
+          scheme={scheme}
           onColor={(color) => patchSelected({ color })}
           onWidth={(strokeWidth) => patchSelected({ strokeWidth })}
           onDuplicate={duplicateSelected}

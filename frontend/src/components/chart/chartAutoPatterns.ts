@@ -65,6 +65,11 @@ export interface PatternArea {
   y1: number;
 }
 
+export interface PatternNode {
+  i: number;
+  price: number;
+}
+
 export interface PatternOverlay {
   id: string;
   pattern: AutoPatternId;
@@ -74,6 +79,19 @@ export interface PatternOverlay {
   extraLines?: (number | null)[][];
   areas?: PatternArea[];
   marks?: PatternMark[];
+  nodes?: PatternNode[];
+}
+
+const PER_PATTERN_CAP = 20;
+
+function pushCapped(hits: PatternOverlay[], hit: PatternOverlay): void {
+  if (hits.some((item) => item.id === hit.id)) {
+    return;
+  }
+  const count = hits.reduce((sum, item) => (item.pattern === hit.pattern ? sum + 1 : sum), 0);
+  if (count < PER_PATTERN_CAP) {
+    hits.push(hit);
+  }
 }
 
 export interface Pivot {
@@ -206,6 +224,161 @@ function lastTwo(items: Pivot[]): [Pivot, Pivot] | null {
   return [items[items.length - 2], items[items.length - 1]];
 }
 
+function finitePrice(value: number): boolean {
+  return Number.isFinite(value) && Math.abs(value) < 1e15;
+}
+
+export function patternFill(color: string, alpha = 0.16): string {
+  const raw = color.replace("#", "").trim();
+  const hex = raw.length === 3 ? raw.split("").map((ch) => ch + ch).join("") : raw;
+  if (hex.length < 6) {
+    return `rgba(0,229,255,${alpha})`;
+  }
+  const r = Number.parseInt(hex.slice(0, 2), 16);
+  const g = Number.parseInt(hex.slice(2, 4), 16);
+  const b = Number.parseInt(hex.slice(4, 6), 16);
+  if (![r, g, b].every(Number.isFinite)) {
+    return `rgba(0,229,255,${alpha})`;
+  }
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function padLine(line: (number | null)[] | undefined, n: number): (number | null)[] {
+  const next = empty(n);
+  if (!line) {
+    return next;
+  }
+  const limit = Math.min(n, line.length);
+  for (let i = 0; i < limit; i += 1) {
+    const value = line[i];
+    next[i] = value != null && finitePrice(value) ? value : null;
+  }
+  return next;
+}
+
+export function sanitizePatternOverlays(hits: PatternOverlay[], n: number): PatternOverlay[] {
+  if (n < 1) {
+    return [];
+  }
+  const cleaned: PatternOverlay[] = [];
+  let dropped = 0;
+  for (const hit of hits) {
+    const nodes = (hit.nodes ?? [])
+      .map((node) => ({ i: clampIndex(node.i, n), price: node.price }))
+      .filter((node) => finitePrice(node.price));
+    const marks = (hit.marks ?? [])
+      .map((mark) => ({
+        index: clampIndex(mark.index, n),
+        price: mark.price,
+        label: mark.label,
+      }))
+      .filter((mark) => finitePrice(mark.price) && mark.label);
+    const areas = (hit.areas ?? [])
+      .map((area) => ({
+        start: clampIndex(area.start, n),
+        end: clampIndex(area.end, n),
+        y0: area.y0,
+        y1: area.y1,
+      }))
+      .filter((area) => finitePrice(area.y0) && finitePrice(area.y1) && area.end >= area.start);
+    const line = padLine(hit.line, n);
+    const extraLines = (hit.extraLines ?? []).map((extra) => padLine(extra, n)).filter((extra) => extra.some((value) => value !== null));
+    const hasGeom =
+      line.some((value) => value !== null) || extraLines.length > 0 || nodes.length >= 2 || marks.length > 0 || areas.length > 0;
+    if (!hasGeom) {
+      dropped += 1;
+      continue;
+    }
+    cleaned.push({
+      ...hit,
+      line,
+      extraLines: extraLines.length ? extraLines : undefined,
+      marks: marks.length ? marks : undefined,
+      areas: areas.length ? areas : undefined,
+      nodes: nodes.length ? nodes : undefined,
+    });
+  }
+  if (dropped > 0 && typeof console !== "undefined") {
+    console.warn(`[Patrones Auto] ${dropped} overlays descartados por coordenadas inválidas.`);
+  }
+  return cleaned;
+}
+
+export interface PatternEchartsLayer {
+  markPointData: Record<string, unknown>[];
+  markLineData: unknown[];
+  markAreaData: unknown[];
+  lines: Array<{ id: string; data: (number | null)[]; color: string; dashed?: boolean }>;
+}
+
+function nodeSegments(nodes: PatternNode[]): Array<[PatternNode, PatternNode]> {
+  const ordered = [...nodes].sort((a, b) => a.i - b.i);
+  const pairs: Array<[PatternNode, PatternNode]> = [];
+  for (let i = 0; i < ordered.length - 1; i += 1) {
+    pairs.push([ordered[i], ordered[i + 1]]);
+  }
+  return pairs;
+}
+
+export function buildPatternEchartsLayer(hits: PatternOverlay[], n: number): PatternEchartsLayer {
+  const overlays = sanitizePatternOverlays(hits, n);
+  const markPointData: Record<string, unknown>[] = [];
+  const markLineData: unknown[] = [];
+  const markAreaData: unknown[] = [];
+  const lines: PatternEchartsLayer["lines"] = [];
+
+  for (const hit of overlays) {
+    const labelStyle = {
+      show: true,
+      color: hit.color,
+      fontSize: 10,
+      fontWeight: 650,
+      fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+      backgroundColor: "rgba(5,5,8,0.72)",
+      padding: [2, 5] as [number, number],
+      borderRadius: 3,
+    };
+    for (const mark of hit.marks ?? []) {
+      markPointData.push({
+        name: mark.label,
+        coord: [mark.index, mark.price],
+        value: mark.label,
+        symbol: "circle",
+        symbolSize: 8,
+        itemStyle: { color: hit.color, borderColor: "#050508", borderWidth: 1 },
+        label: { ...labelStyle, formatter: mark.label, position: "top" },
+      });
+    }
+    const segments = (hit.nodes && hit.nodes.length >= 2 ? nodeSegments(hit.nodes) : []).map(([a, b]) => [
+      {
+        coord: [a.i, a.price],
+        lineStyle: { color: hit.color, width: 1.7 },
+      },
+      { coord: [b.i, b.price] },
+    ]);
+    markLineData.push(...segments);
+    for (const area of hit.areas ?? []) {
+      markAreaData.push([
+        {
+          xAxis: area.start,
+          yAxis: Math.min(area.y0, area.y1),
+          itemStyle: { color: patternFill(hit.color, 0.16) },
+          label: { ...labelStyle, formatter: hit.label, position: "insideTop" },
+        },
+        { xAxis: area.end, yAxis: Math.max(area.y0, area.y1) },
+      ]);
+    }
+    if (hit.line.some((value) => value !== null)) {
+      lines.push({ id: hit.id, data: hit.line, color: hit.color });
+    }
+    (hit.extraLines ?? []).forEach((extra, extraIndex) => {
+      lines.push({ id: `${hit.id}-edge-${extraIndex}`, data: extra, color: hit.color, dashed: true });
+    });
+  }
+
+  return { markPointData, markLineData, markAreaData, lines };
+}
+
 function retrace(from: number, to: number, ratio: number): number {
   return to - (to - from) * ratio;
 }
@@ -311,21 +484,27 @@ function overlay(
   marks: PatternMark[] = [],
   areas: PatternArea[] = [],
 ): PatternOverlay {
+  const nodes = points
+    .map((point) => ({ i: clampIndex(point.i, n), price: point.price }))
+    .filter((point) => Number.isFinite(point.price));
   return {
-    id: `${pattern}-${points.map((p) => p.i).join("-")}`,
+    id: `${pattern}-${nodes.map((p) => p.i).join("-")}`,
     pattern,
     label,
     color,
-    line: interpolate(n, points),
+    line: interpolate(n, nodes),
     extraLines: extra.length ? extra : undefined,
     marks: marks.length ? marks : undefined,
     areas: areas.length ? areas : undefined,
+    nodes: nodes.length ? nodes : undefined,
   };
 }
 
-function channelOverlay(n: number, values: OhlcBar[], zz: Pivot[]): PatternOverlay | null {
-  const look = Math.min(n, 64);
-  const start = n - look;
+function channelOnWindow(n: number, values: OhlcBar[], zz: Pivot[], start: number, end: number): PatternOverlay | null {
+  const look = end - start;
+  if (look < 24) {
+    return null;
+  }
   const xs = Array.from({ length: look }, (_, i) => start + i);
   const ys = xs.map((i) => values[i][1]);
   const { slope, intercept } = linreg(xs, ys);
@@ -333,76 +512,88 @@ function channelOverlay(n: number, values: OhlcBar[], zz: Pivot[]): PatternOverl
   const mean = residuals.reduce((sum, v) => sum + v, 0) / residuals.length;
   const variance = residuals.reduce((sum, v) => sum + (v - mean) ** 2, 0) / residuals.length;
   const std = Math.sqrt(variance);
-
-  const highs = lastTwo(ofKind(zz, "h").filter((p) => p.i >= start));
   const mid = (i: number) => intercept + slope * i;
   let width = std * 1.6;
+  const highs = lastTwo(ofKind(zz, "h").filter((p) => p.i >= start && p.i <= end));
   if (highs) {
-    const dist = Math.abs(highs[1].price - mid(highs[1].i));
-    width = Math.max(width, dist);
+    width = Math.max(width, Math.abs(highs[1].price - mid(highs[1].i)));
   }
-  const lows = lastTwo(ofKind(zz, "l").filter((p) => p.i >= start));
+  const lows = lastTwo(ofKind(zz, "l").filter((p) => p.i >= start && p.i <= end));
   if (lows) {
     width = Math.max(width, Math.abs(mid(lows[1].i) - lows[1].price));
   }
-  if (width <= 0) {
+  if (width <= 0 || !Number.isFinite(width)) {
     return null;
   }
-
   const upper = empty(n);
   const lower = empty(n);
-  for (let i = start; i < n; i += 1) {
+  for (let i = start; i <= end; i += 1) {
     const m = mid(i);
     upper[i] = m + width;
     lower[i] = m - width;
   }
   return {
-    id: `channel_auto-${start}-${n - 1}`,
+    id: `channel_auto-${start}-${end}`,
     pattern: "channel_auto",
     label: "Canal paralelo",
     color: COLOR.geo,
     line: upper,
     extraLines: [lower],
-    areas: [{ start, end: n - 1, y0: mid(start) - width, y1: mid(start) + width }],
+    areas: [{ start, end, y0: mid(start) - width, y1: mid(start) + width }],
+    nodes: [
+      { i: start, price: mid(start) + width },
+      { i: end, price: mid(end) + width },
+    ],
+    marks: [{ index: end, price: mid(end) + width, label: "Canal" }],
   };
 }
 
-function structureLines(
-  n: number,
-  highs: Pivot[],
-  lows: Pivot[],
-): { hs: number; ls: number; h1: Pivot; h2: Pivot; l1: Pivot; l2: Pivot } | null {
-  const hi = lastTwo(highs);
-  const lo = lastTwo(lows);
-  if (!hi || !lo) {
-    return null;
+function channelOverlays(n: number, values: OhlcBar[], zz: Pivot[]): PatternOverlay[] {
+  const hits: PatternOverlay[] = [];
+  const windowSize = Math.min(80, Math.max(36, Math.floor(n / 4)));
+  const step = Math.max(20, Math.floor(windowSize / 2));
+  for (let start = 0; start + windowSize <= n; start += step) {
+    const found = channelOnWindow(n, values, zz, start, Math.min(n - 1, start + windowSize));
+    if (found) {
+      pushCapped(hits, found);
+    }
   }
-  const [h1, h2] = hi;
-  const [l1, l2] = lo;
-  if (h2.i === h1.i || l2.i === l1.i) {
-    return null;
+  const tail = channelOnWindow(n, values, zz, Math.max(0, n - windowSize), n - 1);
+  if (tail) {
+    pushCapped(hits, tail);
   }
-  return { hs: slopeOf(h1, h2), ls: slopeOf(l1, l2), h1, h2, l1, l2 };
+  return hits;
 }
 
 function converging(hs: number, ls: number, scale: number): boolean {
   return hs < ls && Math.abs(hs - ls) > scale * 0.00015;
 }
 
-function geoOverlays(n: number, zz: Pivot[], enabled: Set<AutoPatternId>, lastPrice: number): PatternOverlay[] {
+function classifyGeo(
+  n: number,
+  enabled: Set<AutoPatternId>,
+  lastPrice: number,
+  h1: Pivot,
+  h2: Pivot,
+  l1: Pivot,
+  l2: Pivot,
+): PatternOverlay[] {
   const hits: PatternOverlay[] = [];
-  const highs = ofKind(zz, "h");
-  const lows = ofKind(zz, "l");
-  const geo = structureLines(n, highs, lows);
-  if (!geo) {
-    return hits;
-  }
-  const { hs, ls, h1, h2, l1, l2 } = geo;
+  const hs = slopeOf(h1, h2);
+  const ls = slopeOf(l1, l2);
   const scale = Math.abs(lastPrice) || 1;
   const flatH = Math.abs(h2.price - h1.price) / scale < 0.012;
   const flatL = Math.abs(l2.price - l1.price) / scale < 0.012;
-  const upper = rayFrom(n, h1, h2, Math.min(h1.i, l1.i));
-  const lower = rayFrom(n, l1, l2, Math.min(h1.i, l1.i));
+  const from = Math.min(h1.i, l1.i);
+  const to = Math.max(h2.i, l2.i);
+  const upper = rayFrom(n, h1, h2, from, to);
+  const lower = rayFrom(n, l1, l2, from, to);
+  const area = {
+    start: from,
+    end: to,
+    y0: Math.min(h1.price, h2.price, l1.price, l2.price),
+    y1: Math.max(h1.price, h2.price, l1.price, l2.price),
+  };
 
   if (enabled.has("triangle_sym") && hs < 0 && ls > 0 && converging(hs, ls, scale)) {
     hits.push({
@@ -412,16 +603,18 @@ function geoOverlays(n: number, zz: Pivot[], enabled: Set<AutoPatternId>, lastPr
       color: COLOR.geo,
       line: upper,
       extraLines: [lower],
+      areas: [area],
       marks: [
         { index: h1.i, price: h1.price, label: "R1" },
         { index: h2.i, price: h2.price, label: "R2" },
         { index: l1.i, price: l1.price, label: "S1" },
         { index: l2.i, price: l2.price, label: "S2" },
       ],
+      nodes: [h1, l1, h2, l2],
     });
   }
   if (enabled.has("triangle_asc") && flatH && ls > 0) {
-    const flat = rayFrom(n, h1, { ...h2, price: (h1.price + h2.price) / 2 }, Math.min(h1.i, l1.i));
+    const flat = rayFrom(n, h1, { ...h2, price: (h1.price + h2.price) / 2 }, from, to);
     hits.push({
       id: `triangle_asc-${h1.i}-${l2.i}`,
       pattern: "triangle_asc",
@@ -429,15 +622,17 @@ function geoOverlays(n: number, zz: Pivot[], enabled: Set<AutoPatternId>, lastPr
       color: COLOR.geo,
       line: flat,
       extraLines: [lower],
+      areas: [area],
       marks: [
         { index: h2.i, price: h2.price, label: "R" },
         { index: l1.i, price: l1.price, label: "S1" },
         { index: l2.i, price: l2.price, label: "S2" },
       ],
+      nodes: [l1, h1, l2, h2],
     });
   }
   if (enabled.has("triangle_desc") && flatL && hs < 0) {
-    const flat = rayFrom(n, l1, { ...l2, price: (l1.price + l2.price) / 2 }, Math.min(h1.i, l1.i));
+    const flat = rayFrom(n, l1, { ...l2, price: (l1.price + l2.price) / 2 }, from, to);
     hits.push({
       id: `triangle_desc-${h1.i}-${l2.i}`,
       pattern: "triangle_desc",
@@ -445,6 +640,13 @@ function geoOverlays(n: number, zz: Pivot[], enabled: Set<AutoPatternId>, lastPr
       color: COLOR.geo,
       line: upper,
       extraLines: [flat],
+      areas: [area],
+      marks: [
+        { index: l2.i, price: l2.price, label: "S" },
+        { index: h1.i, price: h1.price, label: "R1" },
+        { index: h2.i, price: h2.price, label: "R2" },
+      ],
+      nodes: [h1, l1, h2, l2],
     });
   }
   if (enabled.has("wedge_rising") && hs > 0 && ls > 0 && ls > hs) {
@@ -455,6 +657,9 @@ function geoOverlays(n: number, zz: Pivot[], enabled: Set<AutoPatternId>, lastPr
       color: COLOR.bear,
       line: upper,
       extraLines: [lower],
+      areas: [area],
+      marks: [{ index: to, price: h2.price, label: "Rising Wedge" }],
+      nodes: [l1, h1, l2, h2],
     });
   }
   if (enabled.has("wedge_falling") && hs < 0 && ls < 0 && hs < ls) {
@@ -465,57 +670,85 @@ function geoOverlays(n: number, zz: Pivot[], enabled: Set<AutoPatternId>, lastPr
       color: COLOR.geo,
       line: upper,
       extraLines: [lower],
+      areas: [area],
+      marks: [{ index: to, price: l2.price, label: "Falling Wedge" }],
+      nodes: [h1, l1, h2, l2],
     });
   }
   if (enabled.has("rectangle") && flatH && flatL) {
     const highPx = (h1.price + h2.price) / 2;
     const lowPx = (l1.price + l2.price) / 2;
-    const from = Math.min(h1.i, l1.i);
     hits.push({
-      id: `rectangle-${from}`,
+      id: `rectangle-${from}-${to}`,
       pattern: "rectangle",
       label: "Rectángulo",
       color: COLOR.geo,
-      line: empty(n).map((_, i) => (i >= from ? highPx : null)),
-      extraLines: [empty(n).map((_, i) => (i >= from ? lowPx : null))],
-      areas: [{ start: from, end: n - 1, y0: lowPx, y1: highPx }],
+      line: empty(n).map((_, i) => (i >= from && i <= to ? highPx : null)),
+      extraLines: [empty(n).map((_, i) => (i >= from && i <= to ? lowPx : null))],
+      areas: [{ start: from, end: to, y0: lowPx, y1: highPx }],
+      marks: [{ index: to, price: highPx, label: "Rectángulo" }],
+      nodes: [
+        { i: from, price: highPx },
+        { i: to, price: highPx },
+      ],
     });
   }
-  if (enabled.has("double_triple")) {
-    const recentH = highs.slice(-4);
-    const recentL = lows.slice(-4);
-    const cluster = (items: Pivot[], pct: number) => {
-      if (items.length < 2) {
-        return [];
+  return hits;
+}
+
+function geoOverlays(n: number, zz: Pivot[], enabled: Set<AutoPatternId>, lastPrice: number): PatternOverlay[] {
+  const hits: PatternOverlay[] = [];
+  const highs = ofKind(zz, "h");
+  const lows = ofKind(zz, "l");
+  const scale = Math.abs(lastPrice) || 1;
+
+  for (let hi = 1; hi < highs.length; hi += 1) {
+    const h1 = highs[hi - 1];
+    const h2 = highs[hi];
+    const windowLows = lows.filter((item) => item.i >= h1.i - 8 && item.i <= h2.i + 48);
+    for (let li = 1; li < windowLows.length; li += 1) {
+      const found = classifyGeo(n, enabled, lastPrice, h1, h2, windowLows[li - 1], windowLows[li]);
+      for (const hit of found) {
+        pushCapped(hits, hit);
       }
-      const last = items[items.length - 1];
-      return items.filter((item) => Math.abs(item.price - last.price) / scale <= pct);
-    };
-    const tops = cluster(recentH, 0.012);
-    const bottoms = cluster(recentL, 0.012);
-    if (tops.length >= 2) {
-      const label = tops.length >= 3 ? "Triple techo" : "Doble techo";
-      const px = tops.reduce((sum, p) => sum + p.price, 0) / tops.length;
-      hits.push({
-        id: `double_triple-h-${tops.map((p) => p.i).join("-")}`,
-        pattern: "double_triple",
-        label,
-        color: COLOR.bear,
-        line: empty(n).map((_, i) => (i >= tops[0].i ? px : null)),
-        marks: tops.map((p) => ({ index: p.i, price: p.price, label })),
-      });
-    } else if (bottoms.length >= 2) {
-      const label = bottoms.length >= 3 ? "Triple suelo" : "Doble suelo";
-      const px = bottoms.reduce((sum, p) => sum + p.price, 0) / bottoms.length;
-      hits.push({
-        id: `double_triple-l-${bottoms.map((p) => p.i).join("-")}`,
-        pattern: "double_triple",
-        label,
-        color: COLOR.geo,
-        line: empty(n).map((_, i) => (i >= bottoms[0].i ? px : null)),
-        marks: bottoms.map((p) => ({ index: p.i, price: p.price, label })),
-      });
     }
+  }
+
+  if (enabled.has("double_triple")) {
+    const scan = (items: Pivot[], kind: "h" | "l") => {
+      for (let i = 1; i < items.length; i += 1) {
+        const cluster = items.filter(
+          (item) => Math.abs(item.price - items[i].price) / scale <= 0.012 && Math.abs(item.i - items[i].i) < 80,
+        );
+        if (cluster.length < 2) {
+          continue;
+        }
+        const label =
+          cluster.length >= 3 ? (kind === "h" ? "Triple techo" : "Triple suelo") : kind === "h" ? "Doble techo" : "Doble suelo";
+        const px = cluster.reduce((sum, p) => sum + p.price, 0) / cluster.length;
+        const from = Math.min(...cluster.map((p) => p.i));
+        const to = Math.max(...cluster.map((p) => p.i));
+        pushCapped(hits, {
+          id: `double_triple-${kind}-${cluster.map((p) => p.i).join("-")}`,
+          pattern: "double_triple",
+          label,
+          color: kind === "h" ? COLOR.bear : COLOR.geo,
+          line: empty(n).map((_, idx) => (idx >= from && idx <= to ? px : null)),
+          areas: [
+            {
+              start: from,
+              end: to,
+              y0: px * (kind === "h" ? 0.995 : 1),
+              y1: px * (kind === "h" ? 1 : 1.005),
+            },
+          ],
+          marks: cluster.map((p) => ({ index: p.i, price: p.price, label })),
+          nodes: cluster,
+        });
+      }
+    };
+    scan(highs, "h");
+    scan(lows, "l");
   }
   return hits;
 }
@@ -547,12 +780,10 @@ function harmonicHits(n: number, zz: Pivot[], enabled: HarmonicId[]): PatternOve
       windows.push(slice);
     }
   }
-  const recent = windows.slice(-8);
 
-  for (const id of enabled) {
-    const spec = harmonicSpec(id);
-    let best: PatternOverlay | null = null;
-    for (const pts of recent) {
+  for (const pts of windows) {
+    for (const id of enabled) {
+      const spec = harmonicSpec(id);
       const x = pts[0];
       const a = pts[1];
       const b = pts[2];
@@ -579,9 +810,7 @@ function harmonicHits(n: number, zz: Pivot[], enabled: HarmonicId[]): PatternOve
       }
       const dPrice = retrace(x.price, a.price, spec.ad);
       const dIndex = clampIndex((cPoint.i ?? useB.i) + Math.max(useB.i - a.i, 3), n);
-      const d: Pivot = pts[4]
-        ? pts[4]
-        : { i: dIndex, price: dPrice, kind: x.kind };
+      const d: Pivot = pts[4] ? pts[4] : { i: dIndex, price: dPrice, kind: x.kind };
       if (pts[4]) {
         const adRatio = Math.abs(d.price - a.price) / Math.abs(xa);
         if (!fibNear(adRatio, spec.ad, 0.14) && !(id === "butterfly" && fibNear(adRatio, 1.618, 0.12))) {
@@ -590,73 +819,92 @@ function harmonicHits(n: number, zz: Pivot[], enabled: HarmonicId[]): PatternOve
       }
       const nodes = [x, a, useB, cPoint, { ...d, price: pts[4] ? d.price : dPrice }];
       const labels = ["X", "A", "B", "C", "D"];
-      best = overlay(
-        id,
-        id.toUpperCase(),
-        COLOR.harmonic,
-        n,
-        nodes,
-        [],
-        nodes.map((node, index) => ({ index: node.i, price: node.price, label: labels[index] ?? "" })),
-        [
-          {
-            start: x.i,
-            end: nodes[4].i,
-            y0: Math.min(...nodes.map((p) => p.price)),
-            y1: Math.max(...nodes.map((p) => p.price)),
-          },
-        ],
+      pushCapped(
+        hits,
+        overlay(
+          id,
+          id.toUpperCase(),
+          COLOR.harmonic,
+          n,
+          nodes,
+          [],
+          nodes.map((node, index) => ({ index: node.i, price: node.price, label: labels[index] ?? "" })),
+          [
+            {
+              start: x.i,
+              end: nodes[4].i,
+              y0: Math.min(...nodes.map((p) => p.price)),
+              y1: Math.max(...nodes.map((p) => p.price)),
+            },
+          ],
+        ),
       );
-    }
-    if (best) {
-      hits.push(best);
     }
   }
   return hits;
 }
 
-function abcdHit(n: number, zz: Pivot[]): PatternOverlay | null {
+function abcdHits(n: number, zz: Pivot[]): PatternOverlay[] {
+  const hits: PatternOverlay[] = [];
   if (zz.length < 3) {
-    return null;
+    return hits;
   }
-  const pts = zz.slice(-4);
-  const a = pts.length === 4 ? pts[0] : zz[zz.length - 3];
-  const b = pts.length === 4 ? pts[1] : zz[zz.length - 2];
-  const c = pts.length === 4 ? pts[2] : zz[zz.length - 1];
-  const ab = b.price - a.price;
-  if (Math.abs(ab) < 1e-9 || b.kind === a.kind) {
-    return null;
-  }
-  const bcRatio = Math.abs(c.price - b.price) / Math.abs(ab);
-  if (!fibNear(bcRatio, FIB.abcdBC, 0.18) && !fibIn(bcRatio, 0.382, 0.886)) {
-    return null;
-  }
-  const dPrice = c.price + ab;
-  const dIndex = clampIndex(c.i + (b.i - a.i), n);
-  const d = pts.length === 4 ? pts[3] : { i: dIndex, price: dPrice, kind: b.kind };
-  if (pts.length === 4) {
-    const cdRatio = Math.abs(d.price - c.price) / Math.abs(ab);
-    if (!fibNear(cdRatio, 1, 0.16) && !fibNear(cdRatio, FIB.abcdCD, 0.16)) {
-      return null;
+  const last = Math.max(0, zz.length - 3);
+  for (let start = 0; start <= last; start += 1) {
+    const pts = zz.slice(start, start + 4);
+    const a = pts[0];
+    const b = pts[1];
+    const c = pts[2];
+    if (!a || !b || !c) {
+      continue;
     }
+    const ab = b.price - a.price;
+    if (Math.abs(ab) < 1e-9 || b.kind === a.kind) {
+      continue;
+    }
+    const bcRatio = Math.abs(c.price - b.price) / Math.abs(ab);
+    if (!fibNear(bcRatio, FIB.abcdBC, 0.18) && !fibIn(bcRatio, 0.382, 0.886)) {
+      continue;
+    }
+    const dPrice = c.price + ab;
+    const dIndex = clampIndex(c.i + (b.i - a.i), n);
+    const d = pts[3] ? pts[3] : { i: dIndex, price: dPrice, kind: b.kind };
+    if (pts[3]) {
+      const cdRatio = Math.abs(d.price - c.price) / Math.abs(ab);
+      if (!fibNear(cdRatio, 1, 0.16) && !fibNear(cdRatio, FIB.abcdCD, 0.16)) {
+        continue;
+      }
+    }
+    const nodes = [a, b, c, { ...d, price: pts[3] ? d.price : dPrice }];
+    pushCapped(
+      hits,
+      overlay(
+        "abcd",
+        "ABCD",
+        COLOR.abcd,
+        n,
+        nodes,
+        [],
+        nodes.map((node, index) => ({ index: node.i, price: node.price, label: ["A", "B", "C", "D"][index] ?? "" })),
+        [
+          {
+            start: a.i,
+            end: nodes[3].i,
+            y0: Math.min(...nodes.map((p) => p.price)),
+            y1: Math.max(...nodes.map((p) => p.price)),
+          },
+        ],
+      ),
+    );
   }
-  const nodes = [a, b, c, { ...d, price: pts.length === 4 ? d.price : dPrice }];
-  return overlay(
-    "abcd",
-    "ABCD",
-    COLOR.abcd,
-    n,
-    nodes,
-    [],
-    nodes.map((node, index) => ({ index: node.i, price: node.price, label: ["A", "B", "C", "D"][index] ?? "" })),
-  );
+  return hits;
 }
 
-function elliottImpulse(n: number, zz: Pivot[]): PatternOverlay | null {
+function elliottImpulseHits(n: number, zz: Pivot[]): PatternOverlay[] {
+  const hits: PatternOverlay[] = [];
   if (zz.length < 6) {
-    return null;
+    return hits;
   }
-  let best: { score: number; waves: Pivot[] } | null = null;
   for (let i = 0; i <= zz.length - 6; i += 1) {
     const seq = zz.slice(i, i + 6);
     const origin = seq[0];
@@ -683,56 +931,76 @@ function elliottImpulse(n: number, zz: Pivot[]): PatternOverlay | null {
     if (!up && (waves[1].price > origin.price || waves[3].price > waves[0].price)) {
       continue;
     }
-    const score = w3 / (w1 + w5 + 1e-9) + w5 / (w1 + 1e-9) - w4 / (w3 + 1e-9);
-    if (!best || score > best.score) {
-      best = { score, waves };
-    }
+    pushCapped(
+      hits,
+      overlay(
+        "elliott_impulse",
+        "Elliott 1-5",
+        COLOR.elliott,
+        n,
+        waves,
+        [],
+        waves.map((wave, index) => ({ index: wave.i, price: wave.price, label: String(index + 1) })),
+        [
+          {
+            start: waves[0].i,
+            end: waves[4].i,
+            y0: Math.min(...waves.map((p) => p.price)),
+            y1: Math.max(...waves.map((p) => p.price)),
+          },
+        ],
+      ),
+    );
   }
-  if (!best) {
-    return null;
-  }
-  return overlay(
-    "elliott_impulse",
-    "Elliott 1-5",
-    COLOR.elliott,
-    n,
-    best.waves,
-    [],
-    best.waves.map((wave, index) => ({ index: wave.i, price: wave.price, label: String(index + 1) })),
-  );
+  return hits;
 }
 
-function elliottAbc(n: number, zz: Pivot[]): PatternOverlay | null {
+function elliottAbcHits(n: number, zz: Pivot[]): PatternOverlay[] {
+  const hits: PatternOverlay[] = [];
   if (zz.length < 4) {
-    return null;
+    return hits;
   }
-  const seq = zz.slice(-4);
-  const origin = seq[0];
-  const a = seq[1];
-  const b = seq[2];
-  const c = seq[3];
-  const ab = Math.abs(b.price - a.price);
-  const xa = Math.abs(a.price - origin.price);
-  const bc = Math.abs(c.price - b.price);
-  if (xa < 1e-9 || ab / xa > 0.99) {
-    return null;
+  for (let i = 0; i <= zz.length - 4; i += 1) {
+    const seq = zz.slice(i, i + 4);
+    const origin = seq[0];
+    const a = seq[1];
+    const b = seq[2];
+    const c = seq[3];
+    const ab = Math.abs(b.price - a.price);
+    const xa = Math.abs(a.price - origin.price);
+    const bc = Math.abs(c.price - b.price);
+    if (xa < 1e-9 || ab / xa > 0.99) {
+      continue;
+    }
+    if (!fibNear(bc / Math.max(xa, 1e-9), 1, 0.25) && !fibNear(bc / Math.max(xa, 1e-9), FIB.ext, 0.2)) {
+      continue;
+    }
+    pushCapped(
+      hits,
+      overlay(
+        "elliott_abc",
+        "Elliott ABC",
+        COLOR.elliott,
+        n,
+        [a, b, c],
+        [],
+        [
+          { index: a.i, price: a.price, label: "A" },
+          { index: b.i, price: b.price, label: "B" },
+          { index: c.i, price: c.price, label: "C" },
+        ],
+        [
+          {
+            start: a.i,
+            end: c.i,
+            y0: Math.min(a.price, b.price, c.price),
+            y1: Math.max(a.price, b.price, c.price),
+          },
+        ],
+      ),
+    );
   }
-  if (!fibNear(bc / Math.max(xa, 1e-9), 1, 0.25) && !fibNear(bc / Math.max(xa, 1e-9), FIB.ext, 0.2)) {
-    return null;
-  }
-  return overlay(
-    "elliott_abc",
-    "Elliott ABC",
-    COLOR.elliott,
-    n,
-    [a, b, c],
-    [],
-    [
-      { index: a.i, price: a.price, label: "A" },
-      { index: b.i, price: b.price, label: "B" },
-      { index: c.i, price: c.price, label: "C" },
-    ],
-  );
+  return hits;
 }
 
 function body(bar: OhlcBar): number {
@@ -746,26 +1014,25 @@ function barRange(bar: OhlcBar): number {
 function candleHits(values: OhlcBar[], enabled: Set<AutoPatternId>): PatternOverlay[] {
   const n = values.length;
   const hits: PatternOverlay[] = [];
-  const start = Math.max(1, n - 48);
-  const counts: Partial<Record<AutoPatternId, number>> = {};
-  const bump = (id: AutoPatternId) => {
-    counts[id] = (counts[id] ?? 0) + 1;
-    return (counts[id] ?? 0) <= 3;
-  };
 
-  for (let i = start; i < n; i += 1) {
+  for (let i = 1; i < n; i += 1) {
     const bar = values[i];
     const span = barRange(bar);
     const size = body(bar);
-    if (enabled.has("doji") && size / span < 0.1 && bump("doji")) {
-      hits.push(overlay("doji", "Doji", COLOR.candles, n, [{ i, price: bar[1] }], [], [{ index: i, price: bar[3], label: "Doji" }]));
+    const barArea = { start: Math.max(0, i - 1), end: i, y0: bar[2], y1: bar[3] };
+    if (enabled.has("doji") && size / span < 0.1) {
+      pushCapped(
+        hits,
+        overlay("doji", "Doji", COLOR.candles, n, [{ i, price: bar[1] }], [], [{ index: i, price: bar[3], label: "Doji" }], [barArea]),
+      );
     }
     if (enabled.has("hammer") && size / span < 0.35) {
       const lower = Math.min(bar[0], bar[1]) - bar[2];
       const upper = bar[3] - Math.max(bar[0], bar[1]);
-      if (lower > size * 2.1 && upper < size * 0.55 && bump("hammer")) {
-        hits.push(
-          overlay("hammer", "Hammer", COLOR.candles, n, [{ i, price: bar[2] }], [], [{ index: i, price: bar[2], label: "Hammer" }]),
+      if (lower > size * 2.1 && upper < size * 0.55) {
+        pushCapped(
+          hits,
+          overlay("hammer", "Hammer", COLOR.candles, n, [{ i, price: bar[2] }], [], [{ index: i, price: bar[2], label: "Hammer" }], [barArea]),
         );
       }
     }
@@ -773,8 +1040,9 @@ function candleHits(values: OhlcBar[], enabled: Set<AutoPatternId>): PatternOver
       const prev = values[i - 1];
       const bull = prev[1] < prev[0] && bar[1] > bar[0] && bar[0] <= prev[1] && bar[1] >= prev[0];
       const bear = prev[1] > prev[0] && bar[1] < bar[0] && bar[0] >= prev[1] && bar[1] <= prev[0];
-      if ((bull || bear) && bump("engulfing")) {
-        hits.push(
+      if (bull || bear) {
+        pushCapped(
+          hits,
           overlay(
             "engulfing",
             bull ? "Engulfing +" : "Engulfing −",
@@ -783,6 +1051,7 @@ function candleHits(values: OhlcBar[], enabled: Set<AutoPatternId>): PatternOver
             [{ i, price: bar[1] }],
             [],
             [{ index: i, price: bar[3], label: bull ? "Eng+" : "Eng-" }],
+            [{ start: i - 1, end: i, y0: Math.min(prev[2], bar[2]), y1: Math.max(prev[3], bar[3]) }],
           ),
         );
       }
@@ -791,14 +1060,9 @@ function candleHits(values: OhlcBar[], enabled: Set<AutoPatternId>): PatternOver
       const a = values[i - 2];
       const mid = values[i - 1];
       const c = bar;
-      if (
-        a[1] < a[0] &&
-        body(mid) / barRange(mid) < 0.32 &&
-        c[1] > c[0] &&
-        c[1] > (a[0] + a[1]) / 2 &&
-        bump("morning_star")
-      ) {
-        hits.push(
+      if (a[1] < a[0] && body(mid) / barRange(mid) < 0.32 && c[1] > c[0] && c[1] > (a[0] + a[1]) / 2) {
+        pushCapped(
+          hits,
           overlay(
             "morning_star",
             "Morning Star",
@@ -825,7 +1089,7 @@ export function detectAutoPatterns(values: OhlcBar[], enabled: Set<AutoPatternId
     return [];
   }
   const n = values.length;
-  const zz = detectZigZag(values);
+  const zz = detectZigZag(values, 1.15);
   const hits: PatternOverlay[] = [];
   const last = values[n - 1][1];
 
@@ -833,32 +1097,23 @@ export function detectAutoPatterns(values: OhlcBar[], enabled: Set<AutoPatternId
   hits.push(...harmonicHits(n, zz, [...harmonics]));
 
   if (enabled.has("abcd")) {
-    const found = abcdHit(n, zz);
-    if (found) {
-      hits.push(found);
-    }
+    hits.push(...abcdHits(n, zz));
   }
   if (enabled.has("elliott_impulse")) {
-    const found = elliottImpulse(n, zz);
-    if (found) {
-      hits.push(found);
-    }
+    hits.push(...elliottImpulseHits(n, zz));
   }
   if (enabled.has("elliott_abc")) {
-    const found = elliottAbc(n, zz);
-    if (found) {
-      hits.push(found);
-    }
+    hits.push(...elliottAbcHits(n, zz));
   }
   if (enabled.has("channel_auto")) {
-    const found = channelOverlay(n, values, zz);
-    if (found) {
-      hits.push(found);
-    }
+    hits.push(...channelOverlays(n, values, zz));
   }
   hits.push(...geoOverlays(n, zz, enabled, last));
   hits.push(...candleHits(values, enabled));
-  return hits.filter((hit) => enabled.has(hit.pattern));
+  return sanitizePatternOverlays(
+    hits.filter((hit) => enabled.has(hit.pattern)),
+    n,
+  );
 }
 
 export interface AgentBrief {

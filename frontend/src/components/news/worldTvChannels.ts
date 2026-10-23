@@ -1,88 +1,128 @@
-export const WORLD_TV_DESK_KEY = "avizor.worldtv.desk.v1";
+export const WORLD_TV_DESK_KEY = "avizor.worldtv.desk.v2";
 
 export const WORLD_TV_REGIONS = [
-  { id: "us", label: "EE.UU." },
-  { id: "uk", label: "UK" },
+  { id: "global", label: "Global" },
+  { id: "us", label: "USA" },
+  { id: "es", label: "España" },
   { id: "eu", label: "Europa" },
-  { id: "apac", label: "Asia-Pacífico" },
-  { id: "asean", label: "Tailandia / ASEAN" },
-  { id: "mena", label: "Oriente Medio" },
-  { id: "africa", label: "África" },
-  { id: "oceania", label: "Oceanía" },
-  { id: "latam", label: "Latam" },
+  { id: "uk", label: "UK" },
+  { id: "asia", label: "Asia" },
 ] as const;
 
+export const TV_TUNER_TABS = [
+  { id: "global", label: "Global" },
+  { id: "us", label: "USA" },
+  { id: "es", label: "España" },
+  { id: "eu", label: "Europa" },
+  { id: "asia", label: "Asia" },
+] as const;
+
+export type TvTunerTabId = (typeof TV_TUNER_TABS)[number]["id"];
 export type WorldTvRegionId = (typeof WORLD_TV_REGIONS)[number]["id"];
+
+export interface TvChannelSeed {
+  id: string;
+  name: string;
+  channelId?: string;
+  handle: string;
+  type: string;
+  region: string;
+  flag: string;
+}
 
 export interface WorldTvChannel {
   id: string;
   label: string;
   title: string;
   region: WorldTvRegionId;
+  flag?: string;
+  format?: string;
   youtubeChannelId?: string;
   handle?: string;
   videoId?: string;
 }
 
-export const WORLD_TV_CHANNELS: WorldTvChannel[] = [
-  { id: "bloomberg", label: "Bloomberg", title: "Bloomberg Markets", region: "us", youtubeChannelId: "UCIALMYtNnZtNYHsRirqUOzQ", videoId: "OlUMDZchivQ" },
-  { id: "cnbc", label: "CNBC", title: "CNBC International", region: "us", youtubeChannelId: "UCrp_UI8XtuYfpiqluWLD7Lw", videoId: "9NyxcX3rhQs" },
-  { id: "yahoo", label: "Yahoo Finance", title: "Yahoo Finance Live", region: "us", youtubeChannelId: "UCEAZeUIeJs0IjQiqTClHaGg", videoId: "KQp-e_XQnDE" },
-  { id: "foxbiz", label: "Fox Business", title: "Fox Business", region: "us", youtubeChannelId: "UCc7p3J50Wbm8UZ50Be6YqPg", handle: "@FoxBusiness" },
-  { id: "reuters", label: "Reuters", title: "Reuters", region: "us", youtubeChannelId: "UChqUTb7kYRX8-EiaN3X44WQ", handle: "@Reuters" },
-  { id: "wsj", label: "WSJ", title: "Wall Street Journal", region: "us", youtubeChannelId: "UCK7tptUDHh-RYDsdxO1-5QQ", handle: "@wsj" },
-  { id: "nbc", label: "NBC News", title: "NBC News", region: "us", youtubeChannelId: "UCeY0bbntWzzVIaj2z3QigXg", handle: "@NBCNews" },
-  { id: "kitco", label: "Kitco", title: "Kitco NEWS", region: "us", youtubeChannelId: "UCCsz7PXdcx1yZGZo7hUwwIg", handle: "@KitcoNEWS" },
+function asYtChannelId(value: string | undefined): string | undefined {
+  const raw = value?.trim() ?? "";
+  return /^UC[\w-]{22}$/.test(raw) ? raw : undefined;
+}
 
-  { id: "sky", label: "Sky News", title: "Sky News", region: "uk", youtubeChannelId: "UCoMdktPbSTixAyNGwb-UYkQ", videoId: "cY-6Ari01EE" },
-  { id: "bbc", label: "BBC News", title: "BBC News", region: "uk", youtubeChannelId: "UC16niRr50-MS1ZwJl5pIQ8g", handle: "@BBCNews" },
-  { id: "guardian", label: "Guardian", title: "The Guardian", region: "uk", youtubeChannelId: "UCHpw8xwDNhU9gdohEcJu4aA", handle: "@theguardian" },
-  { id: "itv", label: "ITV News", title: "ITV News", region: "uk", youtubeChannelId: "UCFQgi22Ht00CpaOQLtvZx2A", handle: "@itvnews" },
-  { id: "cityam", label: "City A.M.", title: "City A.M.", region: "uk", youtubeChannelId: "UCkN3-J2WZ1uGv4Iu-kJwPXw", handle: "@CityAM" },
+function asRegion(value: string): WorldTvRegionId {
+  const key = value.trim().toLowerCase();
+  if (key === "usa") {
+    return "us";
+  }
+  if (key === "españa" || key === "espana" || key === "es") {
+    return "es";
+  }
+  if (key === "europa" || key === "eu") {
+    return "eu";
+  }
+  if (key === "uk" || key === "reino unido") {
+    return "uk";
+  }
+  if (key === "asia") {
+    return "asia";
+  }
+  return "global";
+}
 
-  { id: "dw", label: "DW", title: "DW News", region: "eu", youtubeChannelId: "UCknLrEdhRCp1aegaAuM0FaQ", videoId: "LuKwFajn37U" },
-  { id: "france24", label: "France 24", title: "France 24 English", region: "eu", youtubeChannelId: "UCQfwfsi5VrQ8yKZ-ULxRQKA", videoId: "Ap-UM1O9RBU" },
-  { id: "euronews", label: "Euronews", title: "Euronews", region: "eu", youtubeChannelId: "UCW2QcKZiU8-NiYzxORhC0qw", handle: "@euronews" },
-  { id: "bfm", label: "BFM Business", title: "BFM Business", region: "eu", youtubeChannelId: "UCCva-1YJY_IY8dBOvPoePzA", handle: "@bfmbusiness" },
-  { id: "ntv", label: "n-tv", title: "n-tv Nachrichten", region: "eu", youtubeChannelId: "UC9-ptAQn_l0e8B6SYqzqQ0g", handle: "@ntvNachrichten" },
-  { id: "rtve", label: "RTVE", title: "RTVE Noticias", region: "eu", youtubeChannelId: "UCsZt-9rNs0XZoYzQxYZf-uA", handle: "@rtve" },
+function asHandle(value: string): string {
+  const raw = value.trim();
+  return raw.startsWith("@") ? raw : `@${raw}`;
+}
 
-  { id: "cna", label: "CNA", title: "CNA", region: "apac", youtubeChannelId: "UC5l1Yto5oPGfKEMX0806n7Q", videoId: "-PWMxjBgr0k" },
-  { id: "nikkei", label: "Nikkei", title: "Nikkei Asia", region: "apac", youtubeChannelId: "UCyumUxW9HIh8H7Rq_UzrQLA", handle: "@nikkei" },
-  { id: "arirang", label: "Arirang", title: "Arirang News", region: "apac", youtubeChannelId: "UCzznO4xSV8BErFU6W2cBUSQ", videoId: "zvoPEgZeWkg" },
-  { id: "bloomberg-asia", label: "Bloomberg Asia", title: "Bloomberg Asia", region: "apac", youtubeChannelId: "UCIALMYtNnZtNYHsRirqUOzQ", videoId: "f39oHo6vFLg" },
-  { id: "nhk", label: "NHK World", title: "NHK WORLD-JAPAN", region: "apac", youtubeChannelId: "UCSPEjw8F2nQDffANB62Rj5A", handle: "@NHKWORLDJAPAN" },
-  { id: "cgtn", label: "CGTN", title: "CGTN", region: "apac", youtubeChannelId: "UCgrNz-aDmcr15Go-dBOfpKg", handle: "@cgtn" },
-  { id: "scmp", label: "SCMP", title: "South China Morning Post", region: "apac", youtubeChannelId: "UC4SUWizzKb1WUAuW2Y-h4-A", handle: "@scmp" },
-
-  { id: "thaipbs", label: "Thai PBS", title: "Thai PBS", region: "asean", youtubeChannelId: "UC_D5C2p0rF8G8v9v4k5n2gA", handle: "@ThaiPBS" },
-  { id: "nationtv", label: "Nation TV", title: "Nation TV 22", region: "asean", youtubeChannelId: "UCnv0C3h0K2bM5f8c0YqX2wA", handle: "@nationtv22" },
-  { id: "kompas", label: "Kompas", title: "Kompas TV", region: "asean", youtubeChannelId: "UC5N-dy-vqYT7iQMF0pW7_nA", handle: "@KompasTV" },
-  { id: "abs", label: "ABS-CBN", title: "ABS-CBN News", region: "asean", youtubeChannelId: "UCE2606dvTNJh1SDKd80QPEA", handle: "@ABSCBNNews" },
-  { id: "straitstimes", label: "Straits Times", title: "The Straits Times", region: "asean", youtubeChannelId: "UC4p_I9eiLow9X81OOx_c2KA", handle: "@TheStraitsTimes" },
-
-  { id: "aljazeera", label: "Al Jazeera", title: "Al Jazeera English", region: "mena", youtubeChannelId: "UCNye-wNBqNL5YDmRXLQhHVA", handle: "@aljazeeraenglish" },
-  { id: "trt", label: "TRT World", title: "TRT World", region: "mena", youtubeChannelId: "UC7fWeaHhqgM4Ry-R-B9BNRg", handle: "@trtworld" },
-  { id: "skyarabia", label: "Sky Arabia", title: "Sky News Arabia", region: "mena", youtubeChannelId: "UCoMr21PDqt2m8qEHhJ2B4gA", handle: "@SkyNewsArabia" },
-  { id: "cnbcarabia", label: "CNBC Arabia", title: "CNBC Arabia", region: "mena", youtubeChannelId: "UCsZt9-9rNs0XZoYzQxYZf-uB", handle: "@CNBCArabia" },
-
-  { id: "africanews", label: "Africanews", title: "Africanews", region: "africa", youtubeChannelId: "UC1_E8C8ZjfcE8S7K8g3a0gA", handle: "@africanews" },
-  { id: "channels", label: "Channels TV", title: "Channels Television", region: "africa", youtubeChannelId: "UCEXGDNclvmg6RW0vipJYsTQ", handle: "@channelstv" },
-  { id: "sabc", label: "SABC", title: "SABC News", region: "africa", youtubeChannelId: "UC8yH-uI81UUtEMHjwOA7BQA", handle: "@SABCNews" },
-  { id: "ewn", label: "EWN", title: "Eyewitness News", region: "africa", youtubeChannelId: "UCcuT5I2xZ2Q2kq3Q2kq3Q2k", handle: "@ewn" },
-
-  { id: "abcau", label: "ABC News AU", title: "ABC News Australia", region: "oceania", youtubeChannelId: "UCLgL5-sJ9r7HqzWQsIabUlg", handle: "@abcnews" },
-  { id: "skyau", label: "Sky News AU", title: "Sky News Australia", region: "oceania", youtubeChannelId: "UCwd5VFu4KoJNjkWJZ6J5nww", handle: "@SkyNewsAustralia" },
-  { id: "sbs", label: "SBS", title: "SBS News", region: "oceania", youtubeChannelId: "UCrYAB7CyPeJ0_D33JzUzFqQ", handle: "@sbsnews" },
-
-  { id: "cnnesp", label: "CNN Español", title: "CNN en Español", region: "latam", youtubeChannelId: "UC_lEiu6917IJz03TnntWUaQ", handle: "@cnnee" },
-  { id: "ntn24", label: "NTN24", title: "NTN24", region: "latam", youtubeChannelId: "UCEJsULQh5oXQk4dMf5nFd5g", handle: "@NTN24" },
-  { id: "tnar", label: "TN", title: "Todo Noticias", region: "latam", youtubeChannelId: "UCjM1hSEi0MVrUYctw_wwK-g", handle: "@todonoticias" },
-  { id: "globonews", label: "GloboNews", title: "g1 / GloboNews", region: "latam", youtubeChannelId: "UCaKOvSW-NSlVIgQJVBiFIzw", handle: "@g1" },
-  { id: "forotv", label: "Foro TV", title: "Foro News", region: "latam", youtubeChannelId: "UC2SfeO3FJC10C3J2Wc365yQ", handle: "@ForoTV" },
+/** Listado oficial del sintonizador. Los channelId incompletos se resuelven por handle. */
+export const TV_CHANNELS: TvChannelSeed[] = [
+  { id: "tradertv", name: "TraderTV Live", channelId: "UCnMn36GT_H0X-w5_ckLtlgQ", handle: "@tradertvlive", type: "Directo L-V", region: "USA", flag: "🇺🇸" },
+  { id: "bloomberg", name: "Bloomberg Television", channelId: "UCIALMKvObZNtJ6AmdCLP7Lg", handle: "@markets", type: "Directo 24h", region: "Global", flag: "🌍" },
+  { id: "yahoo", name: "Yahoo Finance", channelId: "UCEAZeUIeJs0IjQiqTCdVSIg", handle: "@YahooFinance", type: "Directo + programas", region: "USA", flag: "🇺🇸" },
+  { id: "cnbc", name: "CNBC Television", channelId: "UCrp_UI8XtuYfpiqALiuTmUQ", handle: "@CNBCtelevision", type: "Directo + programas", region: "USA", flag: "🇺🇸" },
+  { id: "tastylive", name: "tastylive", handle: "@tastylive", type: "Directo L-V", region: "USA", flag: "🇺🇸" },
+  { id: "schwab", name: "Schwab Network", handle: "@SchwabNetwork", type: "Directo L-V", region: "USA", flag: "🇺🇸" },
+  { id: "skynews", name: "Sky News", channelId: "UCoMdktPbSTixAyNGwb-UYkQ", handle: "@SkyNews", type: "Directo 24h", region: "Europa", flag: "🇬🇧" },
+  { id: "dw", name: "DW News", channelId: "UCknLrEdhRCp1aegoMqRaCZg", handle: "@DWNews", type: "Directo 24h", region: "Europa", flag: "🇩🇪" },
+  { id: "france24", name: "France 24 English", channelId: "UCQfwfsi5VrQ8yKZ-UWmAEFg", handle: "@FRANCE24English", type: "Directo 24h", region: "Europa", flag: "🇫🇷" },
+  { id: "aljazeera", name: "Al Jazeera English", channelId: "UCNye-wNBqNL5ZzHSJdpkiRg", handle: "@AlJazeeraEnglish", type: "Directo 24h", region: "Global", flag: "🌍" },
+  { id: "cnbctv18", name: "CNBC TV18", channelId: "UCYnNYzuLOSSSGJAqoWPWmzg", handle: "@CNBCtv18", type: "Directo Asia", region: "Asia", flag: "🇮🇳" },
+  { id: "nhk", name: "NHK World", channelId: "UC3y_pqLzCZBoSQBCQ2fBm0w", handle: "@NHKWorldNews", type: "Directo 24h", region: "Asia", flag: "🇯🇵" },
+  { id: "trtworld", name: "TRT World", handle: "@TRTWorld", type: "Directo 24h", region: "Europa", flag: "🇹🇷" },
+  { id: "negociostv", name: "Negocios TV", channelId: "UCr6JcgG9eskEzL-6nqhmR9Q", handle: "@NegociosTV", type: "Directo + programas", region: "España", flag: "🇪🇸" },
+  { id: "domenech", name: "Domènec Surià", handle: "@BlogdeDoc", type: "2 directos diarios", region: "España", flag: "🇪🇸" },
+  { id: "pablogil", name: "Pablo Gil Trader", handle: "@PabloGilTrader", type: "Vídeos frecuentes", region: "España", flag: "🇪🇸" },
+  { id: "elartedeinvertir", name: "El Arte de Invertir", handle: "@ElArteDeInvertir", type: "Diario", region: "España", flag: "🇪🇸" },
+  { id: "enbolsa", name: "Enbolsa", handle: "@EnbolsaNet", type: "Análisis técnico", region: "España", flag: "🇪🇸" },
+  { id: "davidgalan", name: "David Galán Bolsa", handle: "@BolsaGeneral", type: "Análisis técnico", region: "España", flag: "🇪🇸" },
+  { id: "thetradingchannel", name: "The Trading Channel", channelId: "UCPhAMnWQCKSHcQOQrOt8X1A", handle: "@TheTradingChannel", type: "Educación trading", region: "Global", flag: "🌍" },
+  { id: "warriortrading", name: "Warrior Trading", handle: "@WarriorTrading", type: "Day Trading USA", region: "USA", flag: "🇺🇸" },
+  { id: "chartfanatics", name: "Chart Fanatics", handle: "@ChartFanatics", type: "Sesiones largas", region: "USA", flag: "🇺🇸" },
+  { id: "toritrades", name: "Tori Trades", handle: "@ToriTrades", type: "Trading day", region: "USA", flag: "🇺🇸" },
+  { id: "livetraders", name: "Live Traders", handle: "@LiveTraders", type: "Estrategias", region: "USA", flag: "🇺🇸" },
+  { id: "raynerteo", name: "Rayner Teo", handle: "@TraderLion", type: "Educación", region: "Asia", flag: "🇸🇬" },
+  { id: "andiypips", name: "Andyy Pips", handle: "@AndyyPips", type: "Forex", region: "Europa", flag: "🇬🇧" },
+  { id: "novatostrading", name: "Novatos Trading Club", handle: "@NovatosTradingClub", type: "Formación", region: "España", flag: "🇪🇸" },
+  { id: "valueschool", name: "Value School", handle: "@ValueSchoolES", type: "Inversión y valor", region: "España", flag: "🇪🇸" },
+  { id: "estrategiasinversion", name: "Estrategias de Inversión", handle: "@EstrategiasdInversion", type: "Diario bolsa", region: "España", flag: "🇪🇸" },
+  { id: "rankia", name: "Rankia", handle: "@Rankia", type: "Comunidad y análisis", region: "España", flag: "🇪🇸" },
+  { id: "meetkevin", name: "Meet Kevin", handle: "@MeetKevin", type: "Macro y mercado", region: "USA", flag: "🇺🇸" },
+  { id: "grahamstephan", name: "Graham Stephan", handle: "@GrahamStephan", type: "Finanzas", region: "USA", flag: "🇺🇸" },
+  { id: "andreijikh", name: "Andrei Jikh", handle: "@AndreiJikh", type: "Inversión", region: "USA", flag: "🇺🇸" },
+  { id: "patrickboyle", name: "Patrick Boyle on Finance", handle: "@PatrickBoyleonFinance", type: "Análisis profundo", region: "UK", flag: "🇬🇧" },
+  { id: "reuters", name: "Reuters", handle: "@Reuters", type: "Noticias", region: "Global", flag: "🌍" },
 ];
 
-export type WorldTvChannelId = (typeof WORLD_TV_CHANNELS)[number]["id"];
+export const WORLD_TV_CHANNELS: WorldTvChannel[] = TV_CHANNELS.map((item) => ({
+  id: item.id,
+  label: item.name,
+  title: item.name,
+  region: asRegion(item.region),
+  flag: item.flag,
+  format: item.type,
+  youtubeChannelId: asYtChannelId(item.channelId),
+  handle: asHandle(item.handle),
+}));
+
+export type WorldTvChannelId = (typeof TV_CHANNELS)[number]["id"];
 
 export function isWorldTvChannelId(value: string): value is WorldTvChannelId {
   return WORLD_TV_CHANNELS.some((item) => item.id === value);
@@ -94,6 +134,26 @@ export function worldTvChannel(id: string): WorldTvChannel {
 
 export function channelsByRegion(region: WorldTvRegionId): WorldTvChannel[] {
   return WORLD_TV_CHANNELS.filter((item) => item.region === region);
+}
+
+export function channelFlag(channel: WorldTvChannel): string {
+  return channel.flag ?? "🌐";
+}
+
+export function channelsForTunerTab(tab: TvTunerTabId): WorldTvChannel[] {
+  if (tab === "global") {
+    return WORLD_TV_CHANNELS;
+  }
+  if (tab === "us") {
+    return WORLD_TV_CHANNELS.filter((item) => item.region === "us");
+  }
+  if (tab === "es") {
+    return WORLD_TV_CHANNELS.filter((item) => item.region === "es" || item.flag === "🇪🇸");
+  }
+  if (tab === "eu") {
+    return WORLD_TV_CHANNELS.filter((item) => item.region === "eu" || item.region === "uk");
+  }
+  return WORLD_TV_CHANNELS.filter((item) => item.region === "asia");
 }
 
 export const WORLD_TV_REGION_LABEL: Record<WorldTvRegionId, string> = Object.fromEntries(

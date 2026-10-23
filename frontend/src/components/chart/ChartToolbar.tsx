@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, Braces, Search } from "lucide-react";
+import { Bell, Braces, Moon, Search, Sun } from "lucide-react";
 import Link from "next/link";
 import { ChartLayoutMenu } from "@/components/chart/ChartLayoutMenu";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -18,6 +18,7 @@ import type { IndicatorSettingsMap, IndicatorStyle } from "@/components/chart/ch
 import { INTERVALS, QUICK_TICKERS, type IndicatorId, type SplitMode, type WatchlistId } from "@/components/chart/chartTypes";
 import { searchUniverse } from "@/lib/mockScreenerData";
 import { parseChartInterval, type CandlePayload, type ChartInterval } from "@/lib/marketApi";
+import type { ChartScheme } from "@/components/chart/chartVisualTheme";
 
 interface ChartToolbarProps {
   ticker: string;
@@ -33,6 +34,7 @@ interface ChartToolbarProps {
   savedScripts: SavedScript[];
   scriptIds: Set<string>;
   onToggleScript: (id: string) => void;
+  onRemoveScript: (id: string) => void;
   quote: CandlePayload | null;
   assetName?: string;
   autoSR: AutoSROptions;
@@ -45,6 +47,9 @@ interface ChartToolbarProps {
   split: SplitMode;
   onSplit: (mode: SplitMode) => void;
   onUndock: () => void;
+  labMode?: boolean;
+  scheme?: ChartScheme;
+  onScheme?: (scheme: ChartScheme) => void;
 }
 
 function fmt(n: number): string {
@@ -72,6 +77,7 @@ export function ChartToolbar({
   savedScripts,
   scriptIds,
   onToggleScript,
+  onRemoveScript,
   quote,
   assetName,
   autoSR,
@@ -84,6 +90,9 @@ export function ChartToolbar({
   split,
   onSplit,
   onUndock,
+  labMode = false,
+  scheme = "dark",
+  onScheme,
 }: ChartToolbarProps) {
   const [query, setQuery] = useState(ticker);
   const [openSuggest, setOpenSuggest] = useState(false);
@@ -166,8 +175,9 @@ export function ChartToolbar({
     <div
       ref={boxRef}
       data-chrome="bar"
-      className="relative z-30 flex h-[52px] shrink-0 items-center gap-1.5 overflow-visible border-b border-[#1F1F2E] bg-[#050508] pl-12 pr-2 leading-none"
+      className="pointer-events-none relative z-30 flex h-[52px] shrink-0 items-center gap-1.5 overflow-visible border-b border-[#1F1F2E] bg-[#050508] pl-12 pr-2 leading-none"
     >
+      <div className="pointer-events-auto flex min-w-0 flex-1 items-center gap-1.5 overflow-visible">
       <form
         className="relative shrink-0"
         onSubmit={(event) => {
@@ -320,16 +330,42 @@ export function ChartToolbar({
         savedScripts={savedScripts}
         scriptIds={scriptIds}
         onToggleScript={onToggleScript}
+        onRemoveScript={onRemoveScript}
       />
 
-      <Link
-        href="/builder"
-        className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 font-mono text-[11px] tracking-tight text-zinc-400 hover:bg-white/[0.04] hover:text-white"
-        title="IDE Builder"
-      >
-        <Braces className="h-3.5 w-3.5" />
-        <span className="hidden xl:inline">Builder</span>
-      </Link>
+      {labMode ? (
+        <div className="flex h-8 items-center rounded-md border border-[#1F1F2E] p-0.5">
+          <button
+            type="button"
+            title="Gráfico oscuro"
+            onClick={() => onScheme?.("dark")}
+            className={`inline-flex h-7 w-7 items-center justify-center rounded ${
+              scheme === "dark" ? "bg-[#00FF66]/15 text-[#00FF66]" : "text-zinc-500 hover:text-zinc-200"
+            }`}
+          >
+            <Moon className="h-3.5 w-3.5" strokeWidth={1.75} />
+          </button>
+          <button
+            type="button"
+            title="Gráfico claro"
+            onClick={() => onScheme?.("light")}
+            className={`inline-flex h-7 w-7 items-center justify-center rounded ${
+              scheme === "light" ? "bg-[#00FF66]/15 text-[#00FF66]" : "text-zinc-500 hover:text-zinc-200"
+            }`}
+          >
+            <Sun className="h-3.5 w-3.5" strokeWidth={1.75} />
+          </button>
+        </div>
+      ) : (
+        <Link
+          href="/builder"
+          className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 font-mono text-[11px] tracking-tight text-zinc-200 hover:bg-white/[0.06] hover:text-white"
+          title="IDE Builder"
+        >
+          <Braces className="h-3.5 w-3.5" />
+          <span className="hidden xl:inline">Builder</span>
+        </Link>
+      )}
 
       <ChartAutoSRMenu
         open={srOpen}
@@ -346,25 +382,27 @@ export function ChartToolbar({
         onChange={onAutoSR}
       />
 
-      <ChartLayoutMenu
-        open={splitOpen}
-        onToggle={() => {
-          setSplitOpen((value) => !value);
-          setTfOpen(false);
-          setMenuOpen(false);
-          setPatternsOpen(false);
-          setAgentOpen(false);
-          setSrOpen(false);
-          setListsOpen(false);
-          setStyleOpen(false);
-        }}
-        split={split}
-        onSplit={(mode) => {
-          onSplit(mode);
-          setSplitOpen(false);
-        }}
-        onUndock={onUndock}
-      />
+      {labMode ? null : (
+        <ChartLayoutMenu
+          open={splitOpen}
+          onToggle={() => {
+            setSplitOpen((value) => !value);
+            setTfOpen(false);
+            setMenuOpen(false);
+            setPatternsOpen(false);
+            setAgentOpen(false);
+            setSrOpen(false);
+            setListsOpen(false);
+            setStyleOpen(false);
+          }}
+          split={split}
+          onSplit={(mode) => {
+            onSplit(mode);
+            setSplitOpen(false);
+          }}
+          onUndock={onUndock}
+        />
+      )}
 
       <ChartWatchlistsMenu
         open={listsOpen}
@@ -382,49 +420,54 @@ export function ChartToolbar({
         onSelectList={onWatchlist}
         onTicker={onTicker}
       />
-      <button
-        type="button"
-        onClick={() => setAlertOn((value) => !value)}
-        className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-1.5 font-mono text-[11px] tracking-tight hover:bg-white/[0.04] ${
-          alertOn ? "text-amber-300" : "text-zinc-400 hover:text-white"
-        }`}
-      >
-        <Bell className="h-3.5 w-3.5" />
-        <span className="hidden xl:inline">Alerta</span>
-      </button>
-
-      {last > 0 ? (
-        <div className="hidden shrink-0 items-center gap-0.5 xl:flex">
+      {labMode ? null : (
+        <>
           <button
             type="button"
-            className="rounded-md px-1.5 py-1 font-mono text-[10px] font-semibold tracking-tight text-red-400 hover:bg-red-500/10"
-            title="Venta simulada"
+            onClick={() => setAlertOn((value) => !value)}
+            className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-1.5 font-mono text-[11px] tracking-tight hover:bg-white/[0.04] ${
+              alertOn ? "text-amber-300" : "text-zinc-400 hover:text-white"
+            }`}
           >
-            V {fmt(sellPx)}
+            <Bell className="h-3.5 w-3.5" />
+            <span className="hidden xl:inline">Alerta</span>
           </button>
-          <button
-            type="button"
-            className="rounded-md px-1.5 py-1 font-mono text-[10px] font-semibold tracking-tight text-[#00FF66] hover:bg-[#00FF66]/10"
-            title="Compra simulada"
-          >
-            C {fmt(buyPx)}
-          </button>
-        </div>
-      ) : null}
 
-      <ChartAgentDesk
-        open={agentOpen}
-        onToggle={() => {
-          setAgentOpen((value) => !value);
-          setPatternsOpen(false);
-          setMenuOpen(false);
-          setTfOpen(false);
-          setSrOpen(false);
-          setListsOpen(false);
-          setStyleOpen(false);
-        }}
-        brief={agentBrief}
-      />
+          {last > 0 ? (
+            <div className="hidden shrink-0 items-center gap-0.5 xl:flex">
+              <button
+                type="button"
+                className="rounded-md px-1.5 py-1 font-mono text-[10px] font-semibold tracking-tight text-red-400 hover:bg-red-500/10"
+                title="Venta simulada"
+              >
+                V {fmt(sellPx)}
+              </button>
+              <button
+                type="button"
+                className="rounded-md px-1.5 py-1 font-mono text-[10px] font-semibold tracking-tight text-[#00FF66] hover:bg-[#00FF66]/10"
+                title="Compra simulada"
+              >
+                C {fmt(buyPx)}
+              </button>
+            </div>
+          ) : null}
+
+          <ChartAgentDesk
+            open={agentOpen}
+            onToggle={() => {
+              setAgentOpen((value) => !value);
+              setPatternsOpen(false);
+              setMenuOpen(false);
+              setTfOpen(false);
+              setSrOpen(false);
+              setListsOpen(false);
+              setStyleOpen(false);
+            }}
+            brief={agentBrief}
+          />
+        </>
+      )}
+      </div>
     </div>
   );
 }

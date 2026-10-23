@@ -1,6 +1,8 @@
 export type BackgroundMode = "solid" | "vertical" | "horizontal" | "radial";
 export type CrosshairStyle = "solid" | "dashed" | "hidden";
 
+export type ChartScheme = "dark" | "light";
+
 export interface ChartVisualTheme {
   bull: string;
   bear: string;
@@ -39,6 +41,7 @@ export interface ChartVisualTheme {
   chromePanel: string;
   chromeBorder: string;
   chromeMenu: string;
+  scheme: ChartScheme;
 }
 
 export const DEFAULT_CHART_THEME: ChartVisualTheme = {
@@ -79,7 +82,133 @@ export const DEFAULT_CHART_THEME: ChartVisualTheme = {
   chromePanel: "#0A0A0F",
   chromeBorder: "#1F1F2E",
   chromeMenu: "#0A0A0F",
+  scheme: "dark",
 };
+
+export const LIGHT_CHROME: Pick<
+  ChartVisualTheme,
+  | "uiText"
+  | "uiMuted"
+  | "uiAccent"
+  | "chromeTop"
+  | "chromePanel"
+  | "chromeBorder"
+  | "chromeMenu"
+> = {
+  uiText: "#18181b",
+  uiMuted: "#3f3f46",
+  uiAccent: "#166534",
+  chromeTop: "#ffffff",
+  chromePanel: "#f4f4f5",
+  chromeBorder: "#d4d4d8",
+  chromeMenu: "#ffffff",
+};
+
+export const DARK_CHROME: typeof LIGHT_CHROME = {
+  uiText: DEFAULT_CHART_THEME.uiText,
+  uiMuted: DEFAULT_CHART_THEME.uiMuted,
+  uiAccent: DEFAULT_CHART_THEME.uiAccent,
+  chromeTop: DEFAULT_CHART_THEME.chromeTop,
+  chromePanel: DEFAULT_CHART_THEME.chromePanel,
+  chromeBorder: DEFAULT_CHART_THEME.chromeBorder,
+  chromeMenu: DEFAULT_CHART_THEME.chromeMenu,
+};
+
+export const LIGHT_CANVAS: Pick<
+  ChartVisualTheme,
+  | "grid"
+  | "axis"
+  | "background"
+  | "backgroundTo"
+  | "backgroundMode"
+  | "volumeBull"
+  | "volumeBear"
+  | "crosshairColor"
+> = {
+  grid: "#d4d4d8",
+  axis: "#18181b",
+  background: "#ffffff",
+  backgroundTo: "#eef2f7",
+  backgroundMode: "solid",
+  volumeBull: "rgba(22,163,74,0.18)",
+  volumeBear: "rgba(220,38,38,0.18)",
+  crosshairColor: "#3f3f46",
+};
+
+export const LIGHT_SCHEME: typeof LIGHT_CHROME & typeof LIGHT_CANVAS = {
+  ...LIGHT_CHROME,
+  ...LIGHT_CANVAS,
+};
+
+const SCHEME_KEY = "avizor.chart.scheme";
+
+export function loadChartScheme(): ChartScheme {
+  if (typeof window === "undefined") {
+    return "dark";
+  }
+  return window.localStorage.getItem(SCHEME_KEY) === "light" ? "light" : "dark";
+}
+
+export function saveChartScheme(scheme: ChartScheme): void {
+  window.localStorage.setItem(SCHEME_KEY, scheme);
+}
+
+export function applyChartScheme(theme: ChartVisualTheme, scheme: ChartScheme = theme.scheme): ChartVisualTheme {
+  return { ...theme, scheme: scheme === "light" ? "light" : "dark" };
+}
+
+export function canvasDefaultsForScheme(scheme: ChartScheme): typeof LIGHT_CANVAS {
+  if (scheme === "light") {
+    return LIGHT_CANVAS;
+  }
+  return {
+    grid: DEFAULT_CHART_THEME.grid,
+    axis: DEFAULT_CHART_THEME.axis,
+    background: DEFAULT_CHART_THEME.background,
+    backgroundTo: DEFAULT_CHART_THEME.backgroundTo,
+    backgroundMode: DEFAULT_CHART_THEME.backgroundMode,
+    volumeBull: DEFAULT_CHART_THEME.volumeBull,
+    volumeBear: DEFAULT_CHART_THEME.volumeBear,
+    crosshairColor: DEFAULT_CHART_THEME.crosshairColor,
+  };
+}
+
+function sameHex(left: string, right: string): boolean {
+  return left.trim().toLowerCase() === right.trim().toLowerCase();
+}
+
+function isLightSurface(theme: ChartVisualTheme): boolean {
+  if (theme.scheme === "light") {
+    return true;
+  }
+  const [r, g, b] = parseColor(theme.background);
+  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  if (luminance > 0.52) {
+    return true;
+  }
+  const lightCanvas = canvasDefaultsForScheme("light");
+  return (
+    sameHex(theme.background, lightCanvas.background) ||
+    sameHex(theme.backgroundTo, lightCanvas.backgroundTo)
+  );
+}
+
+export function themeForSchemeSwitch(theme: ChartVisualTheme, next: ChartScheme): ChartVisualTheme {
+  const current = theme.scheme === "light" ? "light" : "dark";
+  const chrome = next === "light" ? LIGHT_CHROME : DARK_CHROME;
+  const fromCanvas = canvasDefaultsForScheme(current);
+  const usesDefaultSurface =
+    sameHex(theme.background, fromCanvas.background) &&
+    sameHex(theme.backgroundTo, fromCanvas.backgroundTo) &&
+    theme.backgroundMode === fromCanvas.backgroundMode;
+  const forceDarkCanvas = next === "dark" && isLightSurface(theme);
+  return {
+    ...theme,
+    ...chrome,
+    ...(forceDarkCanvas || usesDefaultSurface ? canvasDefaultsForScheme(next) : {}),
+    scheme: next,
+  };
+}
 
 export const BACKGROUND_PRESETS = [
   {
@@ -118,6 +247,48 @@ export const BACKGROUND_PRESETS = [
     backgroundMode: "radial" as const,
   },
 ] as const;
+
+export const LIGHT_BACKGROUND_PRESETS = [
+  {
+    id: "paper",
+    label: "Papel",
+    background: "#ffffff",
+    backgroundTo: "#ffffff",
+    backgroundMode: "solid" as const,
+  },
+  {
+    id: "mist",
+    label: "Niebla",
+    background: "#f8fafc",
+    backgroundTo: "#e2e8f0",
+    backgroundMode: "vertical" as const,
+  },
+  {
+    id: "horizon",
+    label: "Horizonte",
+    background: "#ffffff",
+    backgroundTo: "#e8eef6",
+    backgroundMode: "horizontal" as const,
+  },
+  {
+    id: "dayRadial",
+    label: "Radial claro",
+    background: "#ffffff",
+    backgroundTo: "#dbe4f0",
+    backgroundMode: "radial" as const,
+  },
+  {
+    id: "ivory",
+    label: "Marfil",
+    background: "#fffbeb",
+    backgroundTo: "#f8fafc",
+    backgroundMode: "vertical" as const,
+  },
+] as const;
+
+export function backgroundPresetsFor(scheme: ChartScheme) {
+  return scheme === "light" ? LIGHT_BACKGROUND_PRESETS : BACKGROUND_PRESETS;
+}
 
 const STORAGE_KEY = "avizor.chart.theme.v2";
 
@@ -231,7 +402,11 @@ export function normalizeChartTheme(theme: ChartVisualTheme): ChartVisualTheme {
           >,
         }
       : theme;
-  return { ...base, neon: wasFlag ? NEON_MAX : normalizeNeon(rawNeon) };
+  return {
+    ...base,
+    neon: wasFlag ? NEON_MAX : normalizeNeon(rawNeon),
+    scheme: base.scheme === "light" ? "light" : "dark",
+  };
 }
 
 export function neonAmount(theme: ChartVisualTheme): number {
@@ -288,9 +463,10 @@ export function mixColor(from: string, to: string, amount: number): string {
 export function applyNeonTheme(theme: ChartVisualTheme): ChartVisualTheme {
   const amount = neonAmount(theme);
   if (amount <= 0) {
-    return theme;
+    return applyChartScheme(theme);
   }
-  return {
+  const light = theme.scheme === "light";
+  return applyChartScheme({
     ...theme,
     bull: mixColor(theme.bull, NEON_PALETTE.bull, amount),
     bear: mixColor(theme.bear, NEON_PALETTE.bear, amount),
@@ -298,27 +474,20 @@ export function applyNeonTheme(theme: ChartVisualTheme): ChartVisualTheme {
     outlineBear: mixColor(theme.outlineBear, NEON_PALETTE.outlineBear, amount),
     wickBull: mixColor(theme.wickBull, NEON_PALETTE.wickBull, amount),
     wickBear: mixColor(theme.wickBear, NEON_PALETTE.wickBear, amount),
-    grid: mixColor(theme.grid, NEON_PALETTE.grid, amount),
-    axis: mixColor(theme.axis, NEON_PALETTE.axis, amount),
+    grid: mixColor(theme.grid, light ? theme.grid : NEON_PALETTE.grid, light ? 0 : amount),
+    axis: mixColor(theme.axis, light ? theme.axis : NEON_PALETTE.axis, light ? 0 : amount),
     volumeBull: mixColor(theme.volumeBull, NEON_PALETTE.volumeBull, amount),
     volumeBear: mixColor(theme.volumeBear, NEON_PALETTE.volumeBear, amount),
-    background: mixColor(theme.background, NEON_PALETTE.background, amount),
-    backgroundTo: mixColor(theme.backgroundTo, NEON_PALETTE.backgroundTo, amount),
-    backgroundMode: amount > 0.35 ? "radial" : theme.backgroundMode,
+    background: light ? theme.background : mixColor(theme.background, NEON_PALETTE.background, amount),
+    backgroundTo: light ? theme.backgroundTo : mixColor(theme.backgroundTo, NEON_PALETTE.backgroundTo, amount),
+    backgroundMode: light || amount <= 0.35 ? theme.backgroundMode : "radial",
     ema20: mixColor(theme.ema20, NEON_PALETTE.ema20, amount),
     ema50: mixColor(theme.ema50, NEON_PALETTE.ema50, amount),
     ema200: mixColor(theme.ema200, NEON_PALETTE.ema200, amount),
     bidColor: mixColor(theme.bidColor, NEON_PALETTE.bidColor, amount),
     askColor: mixColor(theme.askColor, NEON_PALETTE.askColor, amount),
-    crosshairColor: mixColor(theme.crosshairColor, NEON_PALETTE.crosshairColor, amount),
-    uiText: mixColor(theme.uiText, NEON_PALETTE.uiText, amount),
-    uiMuted: mixColor(theme.uiMuted, NEON_PALETTE.uiMuted, amount),
-    uiAccent: mixColor(theme.uiAccent, NEON_PALETTE.uiAccent, amount),
-    chromeTop: mixColor(theme.chromeTop, NEON_PALETTE.chromeTop, amount),
-    chromePanel: mixColor(theme.chromePanel, NEON_PALETTE.chromePanel, amount),
-    chromeBorder: mixColor(theme.chromeBorder, NEON_PALETTE.chromeBorder, amount),
-    chromeMenu: mixColor(theme.chromeMenu, NEON_PALETTE.chromeMenu, amount),
-  };
+    crosshairColor: mixColor(theme.crosshairColor, light ? theme.crosshairColor : NEON_PALETTE.crosshairColor, light ? 0 : amount),
+  });
 }
 
 export function chromeVars(theme: ChartVisualTheme): Record<string, string> {

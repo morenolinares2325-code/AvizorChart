@@ -24,6 +24,12 @@ export type DrawToolId =
   | "gann_box"
   | "rectangle"
   | "oval"
+  | "circle"
+  | "circle_center"
+  | "circle_filled"
+  | "concentric_circles"
+  | "circle_ring"
+  | "arc"
   | "triangle"
   | "brush"
   | "bezier"
@@ -217,10 +223,21 @@ export const DRAW_GROUPS: DrawGroupDef[] = [
     flyout: true,
     sections: [
       {
+        title: "Círculos",
+        tools: [
+          { id: "circle", label: "Círculo perfecto", hint: "Arrastra el diámetro; radio igual en X e Y", capture: "drag" },
+          { id: "circle_center", label: "Círculo desde el centro", hint: "Clic en el centro y arrastra el radio", capture: "drag" },
+          { id: "circle_filled", label: "Círculo relleno", hint: "Disco semitransparente desde el centro", capture: "drag" },
+          { id: "concentric_circles", label: "Círculos concéntricos", hint: "Anillos 25–100% del radio", capture: "drag" },
+          { id: "circle_ring", label: "Anillo / donut", hint: "Tres clics: centro, radio interior y exterior", capture: "clicks", clicks: 3 },
+          { id: "arc", label: "Arco circular", hint: "Tres clics sobre el arco", capture: "clicks", clicks: 3 },
+          { id: "oval", label: "Óvalo / elipse", hint: "Arrastra el bounding box", capture: "drag" },
+        ],
+      },
+      {
         title: "Figuras geométricas y pinceles",
         tools: [
           { id: "rectangle", label: "Rectángulo / Zona S-R", hint: "Arrastra una zona", capture: "drag" },
-          { id: "oval", label: "Círculo / Óvalo", hint: "Arrastra el radio", capture: "drag" },
           { id: "triangle", label: "Triángulo", hint: "Tres clics", capture: "clicks", clicks: 3 },
           { id: "brush", label: "Rotulador / Pincel libre", hint: "Trazo libre", capture: "freehand" },
           { id: "bezier", label: "Curva de Bezier", hint: "Cuatro puntos de control", capture: "clicks", clicks: 4 },
@@ -284,14 +301,14 @@ export const DRAW_GROUPS: DrawGroupDef[] = [
         tools: [
           {
             id: "long_position",
-            label: "Posición larga",
-            hint: "Riesgo / recompensa desde la entrada",
+            label: "Caja BUY · entry / TP / SL",
+            hint: "Arrastra: entrada, stop y take profit. Luego mueve los handles",
             capture: "drag",
           },
           {
             id: "short_position",
-            label: "Posición corta",
-            hint: "Riesgo / recompensa bajista",
+            label: "Caja SELL · entry / TP / SL",
+            hint: "Arrastra: entrada, stop y take profit. Luego mueve los handles",
             capture: "drag",
           },
           {
@@ -417,8 +434,90 @@ export function groupForTool(id: DrawToolId): DrawGroupId {
   return "cursor";
 }
 
-export function colorForTool(id: DrawToolId): string {
+function hexRgb(color: string): [number, number, number] | null {
+  const raw = color.trim();
+  if (raw.startsWith("rgb")) {
+    const match = raw.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i);
+    if (!match) {
+      return null;
+    }
+    return [Number(match[1]), Number(match[2]), Number(match[3])];
+  }
+  const hex = raw.startsWith("#") ? raw.slice(1) : raw;
+  const full =
+    hex.length === 3 ? `${hex[0]}${hex[0]}${hex[1]}${hex[1]}${hex[2]}${hex[2]}` : hex.slice(0, 6);
+  if (full.length < 6) {
+    return null;
+  }
+  return [
+    Number.parseInt(full.slice(0, 2), 16),
+    Number.parseInt(full.slice(2, 4), 16),
+    Number.parseInt(full.slice(4, 6), 16),
+  ];
+}
+
+function luminance(color: string): number {
+  const rgb = hexRgb(color);
+  if (!rgb) {
+    return 0.5;
+  }
+  return (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255;
+}
+
+export function colorForTool(id: DrawToolId, _scheme: "dark" | "light" = "dark"): string {
+  if (id === "long_position") {
+    return "#00FF66";
+  }
+  if (id === "short_position") {
+    return "#FF3366";
+  }
   return TOOL_COLOR[groupForTool(id)] ?? "#38bdf8";
+}
+
+export function inkForScheme(color: string, scheme: "dark" | "light"): string {
+  const key = color.trim().toUpperCase();
+  if (scheme === "light") {
+    if (key === "#00FF66" || key === "#39FF14" || key === "#4ADE80") {
+      return "#166534";
+    }
+    if (key === "#FF3366" || key === "#FF007F") {
+      return "#9f1239";
+    }
+    if (
+      key === "#FFFFFF" ||
+      key === "#00E5FF" ||
+      key === "#38BDF8" ||
+      key === "#FFD700" ||
+      key === "#C4B5FD" ||
+      key === "#E4E4E7" ||
+      key === "#FBBF24" ||
+      key === "#FB923C"
+    ) {
+      return "#18181b";
+    }
+    return luminance(color) > 0.72 ? "#18181b" : color;
+  }
+  if (
+    key === "#18181B" ||
+    key === "#000000" ||
+    key === "#09090B" ||
+    key === "#050508" ||
+    key === "#0A0A0F" ||
+    key === "#111113"
+  ) {
+    return "#E4E4E7";
+  }
+  if (key === "#166534") {
+    return "#00FF66";
+  }
+  if (key === "#9F1239") {
+    return "#FF3366";
+  }
+  return luminance(color) < 0.16 ? "#E4E4E7" : color;
+}
+
+export function isTradeBox(id: DrawToolId): boolean {
+  return id === "long_position" || id === "short_position";
 }
 
 export function cursorForTool(id: DrawToolId, locked: boolean): string {

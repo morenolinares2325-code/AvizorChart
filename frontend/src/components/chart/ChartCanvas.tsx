@@ -2,20 +2,26 @@
 
 import type { ECharts, EChartsOption, SeriesOption } from "echarts";
 import ReactECharts from "echarts-for-react";
-import Image from "next/image";
-import { memo, useEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
   bindChartScale,
   centerChartView,
   CHART_CENTER_EVENT,
+  CHART_RIGHT_PAD_BARS,
+  CHART_RIGHT_PAD_EVENT,
+  padChartRightView,
   peekPriceLock,
 } from "@/components/chart/chartScaleInteraction";
 import {
+  adLineSeries,
+  adxSeries,
   anchoredVwap,
   atrSeries,
   bollinger,
   cciSeries,
   closes,
+  cmfSeries,
+  donchian,
   emaSeries,
   keltner,
   macdSeries,
@@ -27,6 +33,7 @@ import {
   smaSeries,
   stdDevSeries,
   stochastic,
+  stochRsiSeries,
   supertrendSeries,
   swingRange,
   volumePressure,
@@ -36,7 +43,9 @@ import {
   type AutoSRLevel,
 } from "@/lib/chartMath";
 import type { CandlePayload } from "@/lib/marketApi";
-import type { PatternOverlay } from "@/components/chart/chartAutoPatterns";
+import type { BuilderEChartsPayload } from "@/lib/builderApi";
+import { buildPatternEchartsLayer, type PatternOverlay } from "@/components/chart/chartAutoPatterns";
+import type { ChartPatternPrimitives } from "@/lib/patternPrimitives";
 import { buildPriceSeries, formatPrice } from "@/components/chart/chartPriceSeries";
 import type { ChartPriceType } from "@/components/chart/chartPriceTypes";
 import type { DrawingId, IndicatorId } from "@/components/chart/chartTypes";
@@ -51,16 +60,36 @@ import {
   type ChartVisualTheme,
 } from "@/components/chart/chartVisualTheme";
 
+export interface TradeGuideLevels {
+  entry: number;
+  sl?: number | null;
+  tp?: number | null;
+  side: "buy" | "sell";
+}
+
+export interface TradeChartMarker {
+  date: string;
+  price: number;
+  kind: "entry" | "exit";
+  side: "buy" | "sell";
+  win?: boolean;
+  label: string;
+}
+
 interface ChartCanvasProps {
   data: CandlePayload;
   indicators: Set<IndicatorId>;
   drawings: Set<DrawingId>;
+  tradeGuide?: TradeGuideLevels | null;
+  tradeMarkers?: TradeChartMarker[];
   autoSR?: AutoSRLevel[];
   autoDiagonals?: AutoSRDiagonal[];
   autoPatterns?: PatternOverlay[];
+  enginePatterns?: ChartPatternPrimitives;
   theme?: ChartVisualTheme;
   indicatorSettings?: IndicatorSettingsMap;
   builtIndicators?: BuiltIndicator[];
+  builderVisuals?: BuilderEChartsPayload;
   chartType?: ChartPriceType;
   onInstance?: (chart: ECharts | null) => void;
   onViewChange?: () => void;
@@ -108,10 +137,14 @@ export const ChartCanvas = memo(function ChartCanvas({
   autoSR = [],
   autoDiagonals = [],
   autoPatterns = [],
+  enginePatterns,
   theme = DEFAULT_CHART_THEME,
   indicatorSettings = {},
   builtIndicators = [],
+  builderVisuals,
   chartType = "candles",
+  tradeGuide = null,
+  tradeMarkers = [],
   onInstance,
   onViewChange,
 }: ChartCanvasProps) {
@@ -121,6 +154,7 @@ export const ChartCanvas = memo(function ChartCanvas({
   const unbindScale = useRef<(() => void) | null>(null);
   const yLockRef = useRef<{ min: number; max: number } | null>(null);
   const seedZoomRef = useRef(true);
+  const [rightPad, setRightPad] = useState(0);
   const dataRef = useRef(data);
   dataRef.current = data;
   const onViewRef = useRef(onViewChange);
@@ -138,12 +172,17 @@ export const ChartCanvas = memo(function ChartCanvas({
         autoSR,
         autoDiagonals,
         autoPatterns,
+        enginePatterns,
         visual,
         indicatorSettings,
         builtIndicators,
         chartType,
+        rightPad,
+        builderVisuals,
+        tradeGuide,
+        tradeMarkers,
       ),
-    [data, indicators, drawings, autoSR, autoDiagonals, autoPatterns, visual, indicatorSettings, builtIndicators, chartType],
+    [data, indicators, drawings, autoSR, autoDiagonals, autoPatterns, enginePatterns, visual, indicatorSettings, builtIndicators, chartType, rightPad, builderVisuals, tradeGuide, tradeMarkers],
   );
 
   useEffect(() => {
@@ -154,19 +193,32 @@ export const ChartCanvas = memo(function ChartCanvas({
       }
       yLockRef.current = peekPriceLock(chart) ?? yLockRef.current;
       const locked = withYLock(option, yLockRef.current);
-      const next = seedZoomRef.current ? locked : withoutZoomWindow(locked);
+      const seeding = seedZoomRef.current;
+      const next = seeding ? locked : withoutZoomWindow(locked);
       seedZoomRef.current = false;
       chart.setOption(next, {
         notMerge: false,
-        replaceMerge: ["series"],
+        replaceMerge: ["series", "graphic"],
         lazyUpdate: false,
         silent: true,
       });
+      if (seeding) {
+        yLockRef.current = centerChartView(chart, data.values);
+      }
       onViewRef.current?.();
-    } catch {
+    } catch (error) {
+      console.warn("[Patrones Auto] setOption rechazó la opción del gráfico.", error);
       return;
     }
-  }, [option]);
+  }, [option, data.values.length]);
+
+  useEffect(() => {
+    const chart = chartRef.current?.getEchartsInstance();
+    if (!chart || rightPad <= 0) {
+      return;
+    }
+    padChartRightView(chart, data.values.length, rightPad);
+  }, [rightPad, data.values.length]);
 
   useEffect(() => {
     yLockRef.current = null;
@@ -230,29 +282,30 @@ export const ChartCanvas = memo(function ChartCanvas({
           instance.on("datazoom", bump);
           instance.on("finished", bump);
           onInstanceRef.current?.(instance);
+          if (seedZoomRef.current) {
+            yLockRef.current = centerChartView(instance, dataRef.current.values);
+            seedZoomRef.current = false;
+          }
           bump();
           const onCenter = () => {
             yLockRef.current = centerChartView(instance, dataRef.current.values);
             bump();
           };
+          const onRightPad = () => {
+            setRightPad((current) => (current > 0 ? 0 : CHART_RIGHT_PAD_BARS));
+          };
           window.addEventListener(CHART_CENTER_EVENT, onCenter);
+          window.addEventListener(CHART_RIGHT_PAD_EVENT, onRightPad);
           const prev = unbindScale.current;
           unbindScale.current = () => {
             window.removeEventListener(CHART_CENTER_EVENT, onCenter);
+            window.removeEventListener(CHART_RIGHT_PAD_EVENT, onRightPad);
             instance.off("datazoom", bump);
             instance.off("finished", bump);
             onInstanceRef.current?.(null);
             prev?.();
           };
         }}
-      />
-      <Image
-        src="/brand/avizor-mark.png?v=3"
-        alt=""
-        width={48}
-        height={54}
-        aria-hidden
-        className="pointer-events-none absolute left-3 top-2 z-[1] h-12 w-auto select-none object-contain opacity-15"
       />
       {visual.watermarkTicker || visual.watermarkChange ? (
         <div className="pointer-events-none absolute left-14 top-9 z-[1] select-none">
@@ -263,7 +316,9 @@ export const ChartCanvas = memo(function ChartCanvas({
                 color:
                   neonAmount(visual) > 0
                     ? `rgba(0,255,102,${(0.1 + neonAmount(visual) * 0.12).toFixed(2)})`
-                    : "rgba(255,255,255,0.10)",
+                    : visual.scheme === "light"
+                      ? "rgba(24,24,27,0.12)"
+                      : "rgba(255,255,255,0.10)",
               }}
             >
               {data.ticker}
@@ -296,23 +351,57 @@ function buildOption(
   autoSR: AutoSRLevel[],
   autoDiagonals: AutoSRDiagonal[],
   autoPatterns: PatternOverlay[],
+  enginePatterns: ChartPatternPrimitives | undefined,
   theme: ChartVisualTheme,
   settings: IndicatorSettingsMap,
   builtIndicators: BuiltIndicator[],
   chartType: ChartPriceType,
+  rightPad = 0,
+  builderVisuals?: BuilderEChartsPayload,
+  tradeGuide?: TradeGuideLevels | null,
+  tradeMarkers: TradeChartMarker[] = [],
 ): EChartsOption {
-  const { dates, values, volumes } = data;
+  const values = data.values;
+  const volumes = data.volumes;
+  const dates =
+    rightPad > 0 ? [...data.dates, ...Array.from({ length: rightPad }, () => "")] : data.dates;
   const close = closes(values);
   const lastClose = close[close.length - 1] ?? data.last;
   const lastUp = (values[values.length - 1]?.[1] ?? lastClose) >= (values[values.length - 1]?.[0] ?? lastClose);
   const panes = (
-    ["rsi", "macd", "stoch", "cci", "roc", "willr", "atr", "stddev", "obv", "mfi", "vol_pressure"] as const
+    [
+      "rsi",
+      "macd",
+      "stoch",
+      "cci",
+      "roc",
+      "willr",
+      "adx",
+      "stoch_rsi",
+      "atr",
+      "stddev",
+      "obv",
+      "mfi",
+      "cmf",
+      "ad_line",
+      "vol_pressure",
+    ] as const
   ).filter((id) => indicators.has(id));
   const builtOn = builtIndicators.filter((item) => item.enabled);
   const builtPanes = builtOn.filter((item) => item.pane === "pane");
-  const paneCount = panes.length + builtPanes.length;
-  const paneShare = paneCount === 0 ? 0 : Math.min(50, 8 * paneCount + 4);
+  const builtPaneKeys: string[] = [];
+  for (const item of builtPanes) {
+    const key = item.group || item.id;
+    if (!builtPaneKeys.includes(key)) {
+      builtPaneKeys.push(key);
+    }
+  }
+  const paneCount = panes.length + builtPaneKeys.length;
+  const paneShare = paneCount === 0 ? 0 : Math.min(58, paneCount === 1 ? 26 : 16 * paneCount + 4);
   const eachPane = paneCount === 0 ? 0 : paneShare / paneCount;
+  const sliderHeight = 22;
+  const sliderBottom = 4;
+  const gridBottom = sliderBottom + sliderHeight + 24;
 
   const grids: EChartsOption["grid"] = [];
   const xAxes: EChartsOption["xAxis"] = [];
@@ -322,7 +411,7 @@ function buildOption(
     left: 8,
     right: 54,
     top: 8,
-    bottom: paneCount === 0 ? 36 : `${paneShare}%`,
+    bottom: paneCount === 0 ? gridBottom : `${paneShare + 1.2}%`,
     containLabel: false,
   });
   xAxes.push({
@@ -337,7 +426,7 @@ function buildOption(
       fontSize: 11,
       fontWeight: 500,
       fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-      margin: 6,
+      margin: 8,
       hideOverlap: true,
     },
     axisTick: { show: false },
@@ -382,7 +471,7 @@ function buildOption(
     const top = 100 - paneShare + index * eachPane;
     grids.push(
       index === paneCount - 1
-        ? { left: 8, right: 54, top: `${top + 0.4}%`, bottom: 36, containLabel: false }
+        ? { left: 8, right: 54, top: `${top + 0.4}%`, bottom: gridBottom, containLabel: false }
         : { left: 8, right: 54, top: `${top + 0.4}%`, height: `${eachPane - 0.6}%`, containLabel: false },
     );
     xAxes.push({
@@ -395,16 +484,31 @@ function buildOption(
         fontSize: 11,
         fontWeight: 500,
         fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+        margin: 8,
       },
       axisTick: { show: false },
       axisLine: { lineStyle: { color: theme.grid } },
     });
     const bounded =
-      id === "rsi" || id === "stoch" || id === "mfi"
+      id === "rsi" || id === "stoch" || id === "mfi" || id === "stoch_rsi" || id === "adx"
         ? { min: 0, max: 100 }
         : id === "willr"
           ? { min: -100, max: 0 }
-          : {};
+          : id === "cmf"
+            ? { min: -1, max: 1 }
+            : id === "macd"
+              ? {
+                  scale: true,
+                  min: (extent: { min: number; max: number }) => {
+                    const span = Math.max(Math.abs(extent.min), Math.abs(extent.max), 0.01);
+                    return -span * 1.15;
+                  },
+                  max: (extent: { min: number; max: number }) => {
+                    const span = Math.max(Math.abs(extent.min), Math.abs(extent.max), 0.01);
+                    return span * 1.15;
+                  },
+                }
+              : {};
     yAxes.push({
       gridIndex: index + 1,
       position: "right",
@@ -419,12 +523,13 @@ function buildOption(
       ...bounded,
     });
   });
-  builtPanes.forEach((item, offset) => {
+  builtPaneKeys.forEach((key, offset) => {
     const index = panes.length + offset;
     const top = 100 - paneShare + index * eachPane;
+    const members = builtPanes.filter((item) => (item.group || item.id) === key);
     grids.push(
       index === paneCount - 1
-        ? { left: 8, right: 54, top: `${top + 0.4}%`, bottom: 36, containLabel: false }
+        ? { left: 8, right: 54, top: `${top + 0.4}%`, bottom: gridBottom, containLabel: false }
         : { left: 8, right: 54, top: `${top + 0.4}%`, height: `${eachPane - 0.6}%`, containLabel: false },
     );
     xAxes.push({
@@ -437,6 +542,7 @@ function buildOption(
         fontSize: 11,
         fontWeight: 500,
         fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+        margin: 8,
       },
       axisTick: { show: false },
       axisLine: { lineStyle: { color: theme.grid } },
@@ -452,7 +558,7 @@ function buildOption(
         fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
         margin: 6,
       },
-      ...(item.method === "rsi" ? { min: 0, max: 100 } : {}),
+      ...(members.some((item) => item.method === "rsi") ? { min: 0, max: 100 } : {}),
     });
   });
 
@@ -472,11 +578,25 @@ function buildOption(
       const down = indicators.has("vol_hist") ? (vol.color2 ?? vol.color) : theme.volumeBear;
       return {
         value: volume,
-        itemStyle: { color: values[i][1] >= values[i][0] ? up : down },
+        itemStyle: { color: (values[i]?.[1] ?? 0) >= (values[i]?.[0] ?? 0) ? up : down },
       };
     }),
   });
 
+  const glow = neonAmount(theme);
+  const cfg = (id: IndicatorId) => indicatorStyle(id, settings);
+  const ink = (value: string) => mixColor(value, value, Math.min(0.35, glow));
+  const fillTint = (hex: string, alpha = 0.14) => {
+    const raw = hex.replace("#", "");
+    const n = raw.length === 3 ? raw.split("").map((c) => c + c).join("") : raw;
+    const r = Number.parseInt(n.slice(0, 2), 16);
+    const g = Number.parseInt(n.slice(2, 4), 16);
+    const b = Number.parseInt(n.slice(4, 6), 16);
+    if (![r, g, b].every(Number.isFinite)) {
+      return hex;
+    }
+    return `rgba(${r},${g},${b},${alpha})`;
+  };
   const overlay = (
     name: string,
     color: string,
@@ -491,18 +611,62 @@ function buildOption(
       yAxisIndex: 0,
       data: points,
       showSymbol: false,
+      connectNulls: true,
+      smooth: 0.08,
+      animation: false,
       lineStyle: {
         width,
         color,
-        shadowBlur: 10 * neonAmount(theme),
+        cap: "round",
+        join: "round",
+        shadowBlur: 4 * glow,
         shadowColor: color,
       },
+      z: 4,
+    });
+  };
+  const bandFill = (
+    stack: string,
+    lower: (number | null)[],
+    upper: (number | null)[],
+    color: string,
+  ) => {
+    const span = lower.map((lo, i) => {
+      const hi = upper[i];
+      return lo == null || hi == null ? null : hi - lo;
+    });
+    series.push({
+      id: `fill-${stack}-base`,
+      name: stack,
+      type: "line",
+      xAxisIndex: 0,
+      yAxisIndex: 0,
+      data: lower,
+      stack,
+      showSymbol: false,
+      silent: true,
+      animation: false,
+      lineStyle: { width: 0, opacity: 0 },
+      areaStyle: { opacity: 0 },
+      z: 2,
+    });
+    series.push({
+      id: `fill-${stack}-span`,
+      name: `${stack} fill`,
+      type: "line",
+      xAxisIndex: 0,
+      yAxisIndex: 0,
+      data: span,
+      stack,
+      showSymbol: false,
+      silent: true,
+      animation: false,
+      lineStyle: { width: 0, opacity: 0 },
+      areaStyle: { color: fillTint(color, 0.16) },
+      z: 2,
     });
   };
 
-  const glow = neonAmount(theme);
-  const cfg = (id: IndicatorId) => indicatorStyle(id, settings);
-  const ink = (value: string) => mixColor(value, value, glow);
   if (indicators.has("ema9")) {
     const s = cfg("ema9");
     overlay("EMA 9", ink(s.color), emaSeries(close, s.period ?? 9), s.width);
@@ -515,9 +679,17 @@ function buildOption(
     const s = cfg("ema50");
     overlay("EMA 50", ink(s.color), emaSeries(close, s.period ?? 50), s.width);
   }
+  if (indicators.has("ema100")) {
+    const s = cfg("ema100");
+    overlay("EMA 100", ink(s.color), emaSeries(close, s.period ?? 100), s.width ?? 1.5);
+  }
   if (indicators.has("ema200")) {
     const s = cfg("ema200");
-    overlay("EMA 200", ink(s.color), emaSeries(close, s.period ?? 200), s.width ?? 1.6);
+    overlay("EMA 200", ink(s.color), emaSeries(close, s.period ?? 200), s.width ?? 1.7);
+  }
+  if (indicators.has("sma20")) {
+    const s = cfg("sma20");
+    overlay("SMA 20", ink(s.color), smaSeries(close, s.period ?? 20), s.width);
   }
   if (indicators.has("sma50")) {
     const s = cfg("sma50");
@@ -525,19 +697,20 @@ function buildOption(
   }
   if (indicators.has("sma200")) {
     const s = cfg("sma200");
-    overlay("SMA 200", ink(s.color), smaSeries(close, s.period ?? 200), s.width ?? 1.5);
+    overlay("SMA 200", ink(s.color), smaSeries(close, s.period ?? 200), s.width ?? 1.55);
   }
   if (indicators.has("vwap")) {
     const s = cfg("vwap");
-    overlay("VWAP", ink(s.color), vwapSeries(values, volumes), s.width ?? 1.4);
+    overlay("VWAP", ink(s.color), vwapSeries(values, volumes), s.width ?? 1.45);
   }
   if (indicators.has("avwap")) {
     const s = cfg("avwap");
-    overlay("Anchored VWAP", ink(s.color), anchoredVwap(values, volumes), s.width ?? 1.4);
+    overlay("Anchored VWAP", ink(s.color), anchoredVwap(values, volumes), s.width ?? 1.45);
   }
   if (indicators.has("bb")) {
     const s = cfg("bb");
     const bands = bollinger(close, s.period ?? 20, s.mult ?? 2);
+    bandFill("bb", bands.lower, bands.upper, s.color2 ?? s.color);
     overlay("BB Mid", ink(s.color), bands.mid, s.width ?? 1);
     overlay("BB Upper", ink(s.color2 ?? s.color), bands.upper, s.width);
     overlay("BB Lower", ink(s.color2 ?? s.color), bands.lower, s.width);
@@ -545,9 +718,18 @@ function buildOption(
   if (indicators.has("keltner")) {
     const s = cfg("keltner");
     const bands = keltner(values, s.period ?? 20, s.mult ?? 1.5);
+    bandFill("keltner", bands.lower, bands.upper, s.color2 ?? s.color);
     overlay("Keltner Mid", ink(s.color), bands.mid, s.width ?? 1);
     overlay("Keltner Up", ink(s.color2 ?? s.color), bands.upper, s.width);
     overlay("Keltner Lo", ink(s.color2 ?? s.color), bands.lower, s.width);
+  }
+  if (indicators.has("donchian")) {
+    const s = cfg("donchian");
+    const bands = donchian(values, s.period ?? 20);
+    bandFill("donchian", bands.lower, bands.upper, s.color2 ?? s.color);
+    overlay("Donchian Mid", ink(s.color), bands.mid, s.width ?? 1);
+    overlay("Donchian Up", ink(s.color2 ?? s.color), bands.upper, s.width);
+    overlay("Donchian Lo", ink(s.color2 ?? s.color), bands.lower, s.width);
   }
   if (indicators.has("supertrend")) {
     const s = cfg("supertrend");
@@ -560,10 +742,12 @@ function buildOption(
       yAxisIndex: 0,
       data: st.line.map((value, i) => ({
         value,
-        itemStyle: { color: st.trend[i] === -1 ? (s.color2 ?? "#FF3366") : s.color },
+        itemStyle: { color: st.trend[i] === -1 ? (s.color2 ?? "#EF5350") : s.color },
       })),
       showSymbol: false,
-      lineStyle: { width: s.width ?? 1.5, color: s.color },
+      animation: false,
+      lineStyle: { width: s.width ?? 1.55, color: s.color, cap: "round" },
+      z: 5,
     });
   }
   if (indicators.has("psar")) {
@@ -575,14 +759,27 @@ function buildOption(
       xAxisIndex: 0,
       yAxisIndex: 0,
       data: parabolicSar(values, s.step ?? 0.02, s.max ?? 0.2),
-      symbolSize: 4,
-      itemStyle: { color: s.color },
+      symbolSize: 5,
+      itemStyle: { color: s.color, borderColor: fillTint("#0A0A0F", 0.6), borderWidth: 0.6 },
+      animation: false,
+      z: 6,
     });
   }
 
   panes.forEach((id, index) => {
     const x = index + 1;
     const y = index + 2;
+    const zone = (from: number, to: number, color: string) => ({
+      silent: true,
+      itemStyle: { color },
+      data: [[{ yAxis: from }, { yAxis: to }]],
+    });
+    const dashed = (levels: number[]) => ({
+      silent: true,
+      symbol: "none" as const,
+      lineStyle: { color: "rgba(148,163,184,0.35)", type: "dashed" as const, width: 1 },
+      data: levels.map((yAxis) => ({ yAxis })),
+    });
     const paneLine = (name: string, color: string, data: (number | null)[], width = 1.2) => {
       series.push({
         name,
@@ -591,7 +788,11 @@ function buildOption(
         yAxisIndex: y,
         data,
         showSymbol: false,
-        lineStyle: { width, color },
+        connectNulls: true,
+        smooth: 0.1,
+        animation: false,
+        lineStyle: { width, color, cap: "round", join: "round" },
+        z: 3,
       });
     };
     if (id === "rsi") {
@@ -603,40 +804,128 @@ function buildOption(
         yAxisIndex: y,
         data: rsiSeries(close, s.period ?? 14),
         showSymbol: false,
-        lineStyle: { width: s.width ?? 1.2, color: s.color },
-        markLine: {
+        smooth: 0.1,
+        animation: false,
+        lineStyle: { width: s.width ?? 1.4, color: s.color, cap: "round" },
+        markArea: {
           silent: true,
-          symbol: "none",
-          lineStyle: { color: "#3f3f46", type: "dashed" },
-          data: [{ yAxis: 70 }, { yAxis: 30 }],
+          data: [
+            ...zone(70, 100, "rgba(239,83,80,0.10)").data,
+            ...zone(0, 30, "rgba(38,166,154,0.10)").data,
+          ],
         },
+        markLine: dashed([70, 50, 30]),
+        z: 3,
       });
     }
     if (id === "macd") {
       const s = cfg("macd");
       const macd = macdSeries(close, s.period ?? 12, s.period2 ?? 26, s.period3 ?? 9);
-      paneLine("MACD", s.color, macd.macd, s.width);
-      paneLine("Señal", s.color2 ?? "#f97316", macd.signal, s.width);
+      const histUp = s.color3 ?? "#26A69A";
+      const histDn = "#EF5350";
       series.push({
         name: "Hist MACD",
         type: "bar",
         xAxisIndex: x,
         yAxisIndex: y,
-        data: macd.hist.map((value) => ({
-          value,
-          itemStyle: { color: (value ?? 0) >= 0 ? (s.color3 ?? "#22c55e") : (s.color2 ?? "#ef4444") },
-        })),
+        data: macd.hist.map((value, index) => {
+          if (value == null) {
+            return null;
+          }
+          const prev = index > 0 ? macd.hist[index - 1] : value;
+          const up = value >= 0;
+          const rising = value >= (prev ?? value);
+          const color = up
+            ? rising
+              ? histUp
+              : fillTint(histUp, 0.38)
+            : rising
+              ? fillTint(histDn, 0.38)
+              : histDn;
+          return { value, itemStyle: { color } };
+        }),
+        barWidth: "42%",
+        barMaxWidth: 7,
+        barGap: "20%",
+        animation: false,
+        silent: true,
+        z: 2,
+        markLine: {
+          silent: true,
+          symbol: "none",
+          animation: false,
+          lineStyle: { color: "rgba(148,163,184,0.45)", type: "solid", width: 1 },
+          label: { show: false },
+          data: [{ yAxis: 0 }],
+        },
+      });
+      series.push({
+        name: "MACD",
+        type: "line",
+        xAxisIndex: x,
+        yAxisIndex: y,
+        data: macd.macd,
+        showSymbol: false,
+        connectNulls: false,
+        smooth: false,
+        animation: false,
+        lineStyle: { width: s.width ?? 1.35, color: s.color, cap: "round", join: "round" },
+        z: 5,
+      });
+      series.push({
+        name: "Señal",
+        type: "line",
+        xAxisIndex: x,
+        yAxisIndex: y,
+        data: macd.signal,
+        showSymbol: false,
+        connectNulls: false,
+        smooth: false,
+        animation: false,
+        lineStyle: { width: Math.max(1, (s.width ?? 1.35) - 0.15), color: s.color2 ?? "#FF6D00", cap: "round" },
+        z: 5,
       });
     }
     if (id === "stoch") {
       const s = cfg("stoch");
       const stoch = stochastic(values, s.period ?? 14, s.period2 ?? 3);
-      paneLine("%K", s.color, stoch.k, s.width);
+      series.push({
+        name: "%K",
+        type: "line",
+        xAxisIndex: x,
+        yAxisIndex: y,
+        data: stoch.k,
+        showSymbol: false,
+        smooth: 0.1,
+        animation: false,
+        lineStyle: { width: s.width ?? 1.25, color: s.color, cap: "round" },
+        markArea: {
+          silent: true,
+          data: [
+            ...zone(80, 100, "rgba(239,83,80,0.10)").data,
+            ...zone(0, 20, "rgba(38,166,154,0.10)").data,
+          ],
+        },
+        markLine: dashed([80, 20]),
+        z: 3,
+      });
       paneLine("%D", s.color2 ?? s.color, stoch.d, s.width);
     }
     if (id === "cci") {
       const s = cfg("cci");
-      paneLine("CCI", s.color, cciSeries(values, s.period ?? 20), s.width);
+      series.push({
+        name: "CCI",
+        type: "line",
+        xAxisIndex: x,
+        yAxisIndex: y,
+        data: cciSeries(values, s.period ?? 20),
+        showSymbol: false,
+        smooth: 0.1,
+        animation: false,
+        lineStyle: { width: s.width ?? 1.25, color: s.color, cap: "round" },
+        markLine: dashed([100, 0, -100]),
+        z: 3,
+      });
     }
     if (id === "roc") {
       const s = cfg("roc");
@@ -644,7 +933,49 @@ function buildOption(
     }
     if (id === "willr") {
       const s = cfg("willr");
-      paneLine("Williams %R", s.color, williamsR(values, s.period ?? 14), s.width);
+      series.push({
+        name: "Williams %R",
+        type: "line",
+        xAxisIndex: x,
+        yAxisIndex: y,
+        data: williamsR(values, s.period ?? 14),
+        showSymbol: false,
+        smooth: 0.1,
+        animation: false,
+        lineStyle: { width: s.width ?? 1.25, color: s.color, cap: "round" },
+        markLine: dashed([-20, -80]),
+        z: 3,
+      });
+    }
+    if (id === "adx") {
+      const s = cfg("adx");
+      const adx = adxSeries(values, s.period ?? 14);
+      paneLine("ADX", s.color, adx.adx, s.width);
+      paneLine("+DI", s.color2 ?? "#26A69A", adx.plus, (s.width ?? 1.35) * 0.9);
+      paneLine("−DI", s.color3 ?? "#EF5350", adx.minus, (s.width ?? 1.35) * 0.9);
+    }
+    if (id === "stoch_rsi") {
+      const s = cfg("stoch_rsi");
+      series.push({
+        name: "Stoch RSI",
+        type: "line",
+        xAxisIndex: x,
+        yAxisIndex: y,
+        data: stochRsiSeries(close, s.period ?? 14, s.period2 ?? 14),
+        showSymbol: false,
+        smooth: 0.1,
+        animation: false,
+        lineStyle: { width: s.width ?? 1.3, color: s.color, cap: "round" },
+        markArea: {
+          silent: true,
+          data: [
+            ...zone(80, 100, "rgba(239,83,80,0.10)").data,
+            ...zone(0, 20, "rgba(38,166,154,0.10)").data,
+          ],
+        },
+        markLine: dashed([80, 20]),
+        z: 3,
+      });
     }
     if (id === "atr") {
       const s = cfg("atr");
@@ -660,7 +991,47 @@ function buildOption(
     }
     if (id === "mfi") {
       const s = cfg("mfi");
-      paneLine("MFI", s.color, mfiSeries(values, volumes, s.period ?? 14), s.width);
+      series.push({
+        name: "MFI",
+        type: "line",
+        xAxisIndex: x,
+        yAxisIndex: y,
+        data: mfiSeries(values, volumes, s.period ?? 14),
+        showSymbol: false,
+        smooth: 0.1,
+        animation: false,
+        lineStyle: { width: s.width ?? 1.3, color: s.color, cap: "round" },
+        markArea: {
+          silent: true,
+          data: [
+            ...zone(80, 100, "rgba(239,83,80,0.10)").data,
+            ...zone(0, 20, "rgba(38,166,154,0.10)").data,
+          ],
+        },
+        markLine: dashed([80, 20]),
+        z: 3,
+      });
+    }
+    if (id === "cmf") {
+      const s = cfg("cmf");
+      series.push({
+        name: "CMF",
+        type: "line",
+        xAxisIndex: x,
+        yAxisIndex: y,
+        data: cmfSeries(values, volumes, s.period ?? 20),
+        showSymbol: false,
+        smooth: 0.1,
+        animation: false,
+        lineStyle: { width: s.width ?? 1.3, color: s.color, cap: "round" },
+        areaStyle: { color: fillTint(s.color, 0.12) },
+        markLine: dashed([0]),
+        z: 3,
+      });
+    }
+    if (id === "ad_line") {
+      const s = cfg("ad_line");
+      paneLine("A/D", s.color, adLineSeries(values, volumes), s.width);
     }
     if (id === "vol_pressure") {
       const s = cfg("vol_pressure");
@@ -670,20 +1041,71 @@ function buildOption(
 
   builtOn.forEach((item) => {
     const points = computeBuiltSeries(item, values, volumes);
-    if (item.pane === "overlay") {
-      overlay(item.name, item.color, points, item.width);
+    const paneKey = item.group || item.id;
+    const paneIndex = panes.length + builtPaneKeys.indexOf(paneKey);
+    const axes =
+      item.pane === "pane" && paneIndex >= panes.length
+        ? { xAxisIndex: paneIndex + 1, yAxisIndex: paneIndex + 2 }
+        : { xAxisIndex: 0, yAxisIndex: 0 };
+    if (item.method === "signal_buy" || item.method === "signal_sell") {
+      series.push({
+        id: `builder-${item.id}`,
+        name: item.name,
+        type: "scatter",
+        xAxisIndex: 0,
+        yAxisIndex: 0,
+        data: points,
+        symbol: "triangle",
+        symbolRotate: item.method === "signal_sell" ? 180 : 0,
+        symbolOffset: item.method === "signal_sell" ? [0, -9] : [0, 9],
+        symbolSize: 11,
+        itemStyle: { color: item.color, borderColor: item.color, borderWidth: 0 },
+        animation: false,
+        silent: true,
+        large: true,
+        label: { show: false },
+        z: 12,
+        clip: false,
+      });
       return;
     }
-    const index = panes.length + builtPanes.findIndex((entry) => entry.id === item.id);
+    const asHist = item.style === "hist" || item.method === "macd_hist";
+    const asBar = item.style === "bar";
+    if (asHist || asBar) {
+      series.push({
+        id: `builder-${item.id}`,
+        name: item.name,
+        type: "bar",
+        ...axes,
+        data: points.map((value, index) => {
+          const up = asHist ? (value ?? 0) >= 0 : (values[index]?.[1] ?? 0) >= (values[index]?.[0] ?? 0);
+          return {
+            value,
+            itemStyle: { color: up ? item.color : (item.color2 ?? "#EF5350") },
+          };
+        }),
+        barWidth: asHist ? "55%" : "62%",
+        animation: false,
+        silent: true,
+        z: 2,
+      });
+      return;
+    }
     series.push({
       id: `builder-${item.id}`,
       name: item.name,
       type: "line",
-      xAxisIndex: index + 1,
-      yAxisIndex: index + 2,
+      ...axes,
       data: points,
       showSymbol: false,
-      lineStyle: { width: item.width, color: item.color },
+      connectNulls: true,
+      smooth: 0.12,
+      animation: false,
+      silent: true,
+      emphasis: { disabled: true },
+      lineStyle: { width: item.width, color: item.color, cap: "round", join: "round" },
+      areaStyle: item.fill ? { color: item.fill, opacity: 1 } : undefined,
+      z: item.pane === "overlay" ? 4 : 3,
     });
   });
 
@@ -729,84 +1151,216 @@ function buildOption(
       });
     }
   }
-  if (markLineData.length > 0) {
-    const candleSeries = series.find((item) => (item as { name?: string }).name === "OHLC") as
-      | { markLine?: { data?: unknown[] } }
-      | undefined;
-    if (candleSeries?.markLine) {
-      candleSeries.markLine.data = [...(candleSeries.markLine.data ?? []), ...markLineData];
+  if (tradeGuide) {
+    const long = tradeGuide.side === "buy";
+    markLineData.push({
+      yAxis: tradeGuide.entry,
+      name: long ? "Entrada BUY" : "Entrada SELL",
+      lineStyle: { color: long ? "#26A69A" : "#EF5350", width: 1.4 },
+      label: {
+        formatter: long ? "BUY" : "SELL",
+        position: "insideEndTop",
+        color: long ? "#26A69A" : "#EF5350",
+        fontSize: 10,
+        fontFamily: "ui-monospace, monospace",
+      },
+    });
+    if (tradeGuide.sl != null && Number.isFinite(tradeGuide.sl)) {
+      markLineData.push({
+        yAxis: tradeGuide.sl,
+        name: "Stop Loss",
+        lineStyle: { color: "#EF5350", type: "dashed", width: 1.2 },
+        label: {
+          formatter: "SL",
+          position: "insideEndTop",
+          color: "#EF5350",
+          fontSize: 10,
+          fontFamily: "ui-monospace, monospace",
+        },
+      });
+    }
+    if (tradeGuide.tp != null && Number.isFinite(tradeGuide.tp)) {
+      markLineData.push({
+        yAxis: tradeGuide.tp,
+        name: "Take Profit",
+        lineStyle: { color: "#26A69A", type: "dashed", width: 1.2 },
+        label: {
+          formatter: "TP",
+          position: "insideEndTop",
+          color: "#26A69A",
+          fontSize: 10,
+          fontFamily: "ui-monospace, monospace",
+        },
+      });
+    }
+  }
+  const priceSeries = series.find((item) => {
+    const name = (item as { name?: string }).name;
+    return name === "OHLC" || name === "Precio";
+  }) as
+    | {
+        markLine?: { data?: unknown[]; silent?: boolean; symbol?: string };
+        markArea?: { silent?: boolean; data?: unknown[] };
+        markPoint?: unknown;
+      }
+    | undefined;
+
+  if (markLineData.length > 0 && priceSeries?.markLine) {
+    priceSeries.markLine.data = [...(priceSeries.markLine.data ?? []), ...markLineData];
+  }
+
+  const patternLayer = buildPatternEchartsLayer(autoPatterns, values.length);
+  const patternMarks = patternLayer.markPointData;
+  const patternAreas = patternLayer.markAreaData;
+  const builderLines = (builderVisuals?.markLines ?? []).filter(
+    (item) => item && typeof item === "object" && "yAxis" in (item as object),
+  );
+  const overlayLines = builderLines.filter((item) => (item as { pane?: string }).pane !== "pane");
+  const paneLines = builderLines.filter((item) => (item as { pane?: string }).pane === "pane");
+  const builderAreas = builderVisuals?.markAreas ?? [];
+  const overlayAreas = builderAreas.filter((item) => {
+    const head = Array.isArray(item) ? item[0] : item;
+    return !head || typeof head !== "object" || (head as { pane?: string }).pane !== "pane";
+  });
+  const paneAreas = builderAreas.filter((item) => {
+    const head = Array.isArray(item) ? item[0] : item;
+    return Boolean(head && typeof head === "object" && (head as { pane?: string }).pane === "pane");
+  });
+  if (overlayLines.length > 0 && priceSeries?.markLine) {
+    priceSeries.markLine.data = [...(priceSeries.markLine.data ?? []), ...overlayLines];
+  }
+  const paneSeries = series.find((item) => String((item as { id?: string }).id ?? "").startsWith("builder-") && (item as { yAxisIndex?: number }).yAxisIndex !== 0) as
+    | { markLine?: { data?: unknown[]; silent?: boolean; symbol?: string; animation?: boolean }; markArea?: { silent?: boolean; animation?: boolean; data?: unknown[] } }
+    | undefined;
+  if (paneSeries && (paneLines.length > 0 || paneAreas.length > 0)) {
+    if (paneLines.length > 0) {
+      paneSeries.markLine = {
+        silent: true,
+        symbol: "none",
+        animation: false,
+        data: paneLines,
+      };
+    }
+    if (paneAreas.length > 0) {
+      paneSeries.markArea = {
+        silent: true,
+        animation: false,
+        data: paneAreas,
+      };
+    }
+  }
+  const tradeMarks = tradeMarkers
+    .filter((mark) => mark.date && Number.isFinite(mark.price))
+    .map((mark) => {
+      const win = mark.win === true;
+      const entryBuy = mark.kind === "entry" && mark.side === "buy";
+      const color =
+        mark.kind === "entry" ? (mark.side === "buy" ? "#26A69A" : "#EF5350") : win ? "#22c55e" : "#EF5350";
+      const rotate = entryBuy || (mark.kind === "exit" && !win && mark.side === "sell") ? 0 : 180;
+      const below = entryBuy || (mark.kind === "exit" && mark.side === "sell");
+      return {
+        name: mark.label,
+        coord: [mark.date, mark.price] as [string, number],
+        symbol: "arrow",
+        symbolSize: [18, 24],
+        symbolRotate: rotate,
+        symbolOffset: below ? [0, 22] : [0, -22],
+        itemStyle: { color },
+        label: {
+          show: true,
+          formatter: mark.label,
+          position: below ? "bottom" : "top",
+          color,
+          fontSize: 10,
+          fontWeight: 600,
+          fontFamily: "ui-monospace, monospace",
+        },
+      };
+    });
+
+  if ((tradeMarks.length > 0 || overlayAreas.length > 0) && priceSeries) {
+    if (tradeMarks.length > 0) {
+      priceSeries.markPoint = {
+        silent: true,
+        animation: false,
+        data: tradeMarks,
+      };
+    }
+    const areaData = [
+      ...((priceSeries.markArea?.data as unknown[] | undefined) ?? []),
+      ...overlayAreas,
+    ];
+    if (areaData.length > 0) {
+      priceSeries.markArea = {
+        silent: true,
+        animation: false,
+        data: areaData,
+      };
     }
   }
 
-  const patternMarks = autoPatterns.flatMap((hit) =>
-    (hit.marks ?? []).map((mark) => ({
-      name: mark.label,
-      coord: [dates[mark.index], mark.price] as [string, number],
-      value: mark.label,
-      itemStyle: { color: hit.color },
-      label: { color: hit.color, fontSize: 10, fontFamily: "ui-monospace, monospace" },
-    })),
-  );
-  const patternAreas = autoPatterns.flatMap((hit) =>
-    (hit.areas ?? []).map((area) => [
-      { xAxis: dates[area.start], yAxis: area.y0, itemStyle: { color: `${hit.color}22` } },
-      { xAxis: dates[area.end], yAxis: area.y1 },
-    ]),
-  );
-  if (patternMarks.length > 0 || patternAreas.length > 0) {
-    const candleSeries = series.find((item) => (item as { name?: string }).name === "OHLC") as
-      | { markPoint?: unknown; markArea?: unknown }
-      | undefined;
-    if (candleSeries) {
-      if (patternMarks.length > 0) {
-        candleSeries.markPoint = {
-          symbol: "circle",
-          symbolSize: 8,
-          silent: true,
-          data: patternMarks,
-        };
-      }
-      if (patternAreas.length > 0) {
-        candleSeries.markArea = {
-          silent: true,
-          data: patternAreas,
-        };
-      }
-    }
+  const patternAnchor = dates.map(() => null as number | null);
+  const engineLines = enginePatterns?.markLines ?? [];
+  const engineAreas = enginePatterns?.markAreas ?? [];
+  if (
+    patternMarks.length > 0 ||
+    patternAreas.length > 0 ||
+    patternLayer.markLineData.length > 0 ||
+    engineLines.length > 0 ||
+    engineAreas.length > 0
+  ) {
+    series.push({
+      id: "auto-patterns-layer",
+      name: "Patrones Auto",
+      type: "line",
+      xAxisIndex: 0,
+      yAxisIndex: 0,
+      data: patternAnchor,
+      showSymbol: false,
+      silent: true,
+      animation: false,
+      z: 8,
+      lineStyle: { width: 0, opacity: 0 },
+      markPoint: {
+        silent: true,
+        animation: false,
+        data: patternMarks,
+      },
+      markLine: {
+        silent: true,
+        animation: false,
+        symbol: "none",
+        data: [...patternLayer.markLineData, ...engineLines],
+      },
+      markArea: {
+        silent: true,
+        animation: false,
+        data: [...patternAreas, ...engineAreas],
+      },
+    });
   }
 
-  for (const hit of autoPatterns) {
-    const hasLine = hit.line.some((value) => value !== null);
-    if (hasLine) {
-      series.push({
-        name: hit.id,
-        type: "line",
-        xAxisIndex: 0,
-        yAxisIndex: 0,
-        data: hit.line,
-        showSymbol: Boolean(hit.marks?.length),
-        symbolSize: 7,
-        connectNulls: true,
-        silent: true,
-        lineStyle: { width: 1.6, color: hit.color },
-        itemStyle: { color: hit.color },
-      });
-    }
-    (hit.extraLines ?? []).forEach((extra, extraIndex) => {
-      if (!extra.some((value) => value !== null)) {
-        return;
-      }
-      series.push({
-        name: `${hit.id}-edge-${extraIndex}`,
-        type: "line",
-        xAxisIndex: 0,
-        yAxisIndex: 0,
-        data: extra,
-        showSymbol: false,
-        connectNulls: true,
-        silent: true,
-        lineStyle: { width: 1.3, color: hit.color, type: "dashed" },
-      });
+  for (const line of patternLayer.lines) {
+    const padded =
+      dates.length > line.data.length ? [...line.data, ...Array.from({ length: dates.length - line.data.length }, () => null)] : line.data;
+    series.push({
+      id: `auto-pattern-${line.id}`,
+      name: line.id,
+      type: "line",
+      xAxisIndex: 0,
+      yAxisIndex: 0,
+      data: padded,
+      showSymbol: false,
+      connectNulls: false,
+      silent: true,
+      animation: false,
+      z: 7,
+      lineStyle: {
+        width: line.dashed ? 1.3 : 1.7,
+        color: line.color,
+        type: line.dashed ? "dashed" : "solid",
+      },
+      itemStyle: { color: line.color },
     });
   }
 
@@ -857,11 +1411,12 @@ function buildOption(
 
   const xAxisCount = Array.isArray(xAxes) ? xAxes.length : 1;
   const barCount = dates.length;
-  const visible = barCount > 700 ? Math.min(520, barCount) : barCount;
+  const visible =
+    barCount <= 90 ? barCount : Math.min(barCount, barCount > 800 ? 180 : 120);
   const zoomStart = barCount > 0 ? Math.max(0, ((barCount - visible) / barCount) * 100) : 0;
 
   return {
-    backgroundColor: "transparent",
+    backgroundColor: theme.backgroundMode === "solid" ? theme.background : "transparent",
     animation: false,
     animationDuration: 0,
     animationDurationUpdate: 0,
@@ -900,9 +1455,10 @@ function buildOption(
         start: zoomStart,
         end: 100,
         filterMode: "none",
-        zoomOnMouseWheel: true,
+        zoomOnMouseWheel: false,
         moveOnMouseMove: false,
         moveOnMouseWheel: false,
+        minValueSpan: 12,
         throttle: 16,
         realtime: true,
         preventDefaultMouseMove: false,
@@ -912,33 +1468,45 @@ function buildOption(
         xAxisIndex: Array.from({ length: xAxisCount }, (_, i) => i),
         start: zoomStart,
         end: 100,
-        height: 18,
-        bottom: 6,
+        height: sliderHeight,
+        bottom: sliderBottom,
         filterMode: "none",
         realtime: true,
         showDetail: false,
         brushSelect: false,
-        fillerColor: "rgba(0,255,102,0.12)",
-        borderColor: theme.chromeBorder,
-        backgroundColor: theme.chromePanel,
-        handleStyle: { color: theme.uiAccent, borderColor: theme.uiAccent },
-        moveHandleStyle: { color: theme.uiAccent },
-        dataBackground: { lineStyle: { color: theme.grid }, areaStyle: { color: theme.grid } },
-        selectedDataBackground: { lineStyle: { color: theme.uiAccent }, areaStyle: { color: theme.uiAccent } },
-        textStyle: { color: theme.uiMuted, fontSize: 9 },
-      },
-      {
-        type: "inside",
-        yAxisIndex: 0,
-        filterMode: "none",
-        zoomOnMouseWheel: "shift",
-        moveOnMouseMove: false,
-        moveOnMouseWheel: false,
-        throttle: 16,
-        realtime: true,
+        fillerColor: theme.scheme === "light" ? "rgba(24,24,27,0.10)" : "rgba(161,161,170,0.16)",
+        borderColor: theme.scheme === "light" ? "#d4d4d8" : "#27272a",
+        backgroundColor: theme.scheme === "light" ? "#f4f4f5" : "#09090b",
+        handleStyle:
+          theme.scheme === "light"
+            ? { color: "#52525b", borderColor: "#3f3f46" }
+            : { color: "#71717a", borderColor: "#a1a1aa" },
+        moveHandleStyle: { color: theme.scheme === "light" ? "#3f3f46" : "#52525b" },
+        emphasis: {
+          handleStyle:
+            theme.scheme === "light"
+              ? { color: "#18181b", borderColor: "#09090b" }
+              : { color: "#a1a1aa", borderColor: "#d4d4d8" },
+          moveHandleStyle: { color: theme.scheme === "light" ? "#18181b" : "#a1a1aa" },
+        },
+        dataBackground: {
+          lineStyle: { color: theme.scheme === "light" ? "#a1a1aa" : "#3f3f46", width: 1 },
+          areaStyle: {
+            color: theme.scheme === "light" ? "rgba(24,24,27,0.10)" : "rgba(113,113,122,0.22)",
+          },
+        },
+        selectedDataBackground: {
+          lineStyle: { color: theme.scheme === "light" ? "#3f3f46" : "#a1a1aa", width: 1 },
+          areaStyle: {
+            color: theme.scheme === "light" ? "rgba(24,24,27,0.16)" : "rgba(161,161,170,0.28)",
+          },
+        },
+        textStyle: { color: theme.axis, fontSize: 9 },
+        minValueSpan: 12,
       },
     ],
     series,
+    graphic: builderVisuals?.graphic ?? [],
   };
 }
 

@@ -33,9 +33,15 @@ type DragState =
 type ChartWithLock = ECharts & { __avizorYLock?: { min: number; max: number } | null };
 
 export const CHART_CENTER_EVENT = "avizor-chart-center";
+export const CHART_RIGHT_PAD_EVENT = "avizor-chart-right-pad";
+export const CHART_RIGHT_PAD_BARS = 22;
 
 export function requestChartCenter(): void {
   window.dispatchEvent(new Event(CHART_CENTER_EVENT));
+}
+
+export function requestChartRightPad(): void {
+  window.dispatchEvent(new Event(CHART_RIGHT_PAD_EVENT));
 }
 
 interface ScaleHandlers {
@@ -66,11 +72,37 @@ function gridRect(chart: ECharts): Rect | null {
   return null;
 }
 
-function readZoom(chart: ECharts): { start: number; end: number } {
+function zoomList(chart: ECharts): Array<Record<string, unknown>> {
   const raw = chart.getOption().dataZoom;
-  const list = Array.isArray(raw) ? raw : [];
-  const first = list[0] as { start?: number; end?: number } | undefined;
-  return { start: first?.start ?? 0, end: first?.end ?? 100 };
+  return (Array.isArray(raw) ? raw : raw ? [raw] : []).filter(
+    (item): item is Record<string, unknown> => Boolean(item) && typeof item === "object",
+  );
+}
+
+function isXZoom(item: Record<string, unknown>): boolean {
+  if (item.yAxisIndex !== undefined && item.xAxisIndex === undefined) {
+    return false;
+  }
+  return true;
+}
+
+function xZoomIndexes(chart: ECharts): number[] {
+  const list = zoomList(chart);
+  const indexes = list
+    .map((item, index) => (isXZoom(item) ? index : -1))
+    .filter((index) => index >= 0);
+  return indexes.length > 0 ? indexes : [0];
+}
+
+function readZoom(chart: ECharts): { start: number; end: number } {
+  const list = zoomList(chart);
+  const first = list.find(isXZoom) ?? list[0];
+  const start = Number(first?.start);
+  const end = Number(first?.end);
+  if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+    return { start, end };
+  }
+  return { start: 0, end: 100 };
 }
 
 function readYExtent(chart: ECharts): { min: number; max: number } | null {
@@ -125,26 +157,68 @@ export function peekPriceLock(chart: ECharts): { min: number; max: number } | nu
 }
 
 function applyX(chart: ECharts, start: number, end: number): void {
-  const span = end - start;
-  if (span < 1.2) {
-    return;
-  }
+  const span = clamp(end - start, 2.4, 100);
   const lo = clamp(start, 0, 100 - span);
   const hi = lo + span;
-  const raw = chart.getOption().dataZoom;
-  const list = Array.isArray(raw) ? raw : [];
-  list.forEach((item, index) => {
-    const zoom = item as { xAxisIndex?: number | number[]; yAxisIndex?: number | number[] };
-    if (zoom.yAxisIndex !== undefined && zoom.xAxisIndex === undefined) {
-      return;
-    }
-    chart.dispatchAction({
-      type: "dataZoom",
-      dataZoomIndex: index,
-      start: lo,
-      end: hi,
-    });
+  chart.dispatchAction({
+    type: "dataZoom",
+    batch: xZoomIndexes(chart).map((dataZoomIndex) => ({ dataZoomIndex, start: lo, end: hi })),
   });
+}
+
+function fitYToVisible(chart: ECharts, handlers: ScaleHandlers = {}): void {
+  const rows = priceRows(chart);
+  if (rows.length === 0) {
+    return;
+  }
+  const zoom = readZoom(chart);
+  const from = Math.max(0, Math.floor((zoom.start / 100) * rows.length));
+  const to = Math.min(rows.length, Math.max(from + 2, Math.ceil((zoom.end / 100) * rows.length)));
+  let low = Number.POSITIVE_INFINITY;
+  let high = Number.NEGATIVE_INFINITY;
+  for (let i = from; i < to; i += 1) {
+    const row = rows[i];
+    if (!row) {
+      continue;
+    }
+    if (!Number.isFinite(row.low) || !Number.isFinite(row.high)) {
+      continue;
+    }
+    if (row.low < low) {
+      low = row.low;
+    }
+    if (row.high > high) {
+      high = row.high;
+    }
+  }
+  if (!Number.isFinite(low) || !Number.isFinite(high) || high <= low) {
+    return;
+  }
+  const pad = Math.max((high - low) * 0.12, Math.abs(high) * 0.004, 1e-6);
+  const next = { min: low - pad, max: high + pad };
+  applyY(chart, next.min, next.max);
+  handlers.onYLock?.(next);
+}
+
+function zoomTimeWindow(
+  chart: ECharts,
+  delta: number,
+  offsetX: number,
+  rect: Rect,
+  handlers: ScaleHandlers,
+): void {
+  const zoom = readZoom(chart);
+  const span = clamp((zoom.end - zoom.start) * Math.exp(delta * 0.0018), 2.4, 100);
+  const followLatest = zoom.end >= 99.15;
+  if (followLatest) {
+    applyX(chart, 100 - span, 100);
+  } else {
+    const t = clamp((offsetX - rect.x) / Math.max(rect.width, 1), 0, 1);
+    const anchor = zoom.start + t * (zoom.end - zoom.start);
+    applyX(chart, anchor - span * t, anchor + span * (1 - t));
+  }
+  fitYToVisible(chart, handlers);
+  handlers.onView?.();
 }
 
 function rowPrices(row: unknown): { low: number; high: number; close: number } | null {
@@ -181,7 +255,7 @@ function priceRows(chart: ECharts): { low: number; high: number; close: number }
   const list = Array.isArray(raw) ? raw : [];
   const ohlc = list.find((item) => String((item as { id?: string }).id ?? "").startsWith("ohlc"));
   const data = (ohlc as { data?: unknown[] } | undefined)?.data ?? [];
-  return data.map(rowPrices).filter((item): item is { low: number; high: number; close: number } => item !== null);
+  return data.map((row) => rowPrices(row)).map((item) => item ?? { low: Number.NaN, high: Number.NaN, close: Number.NaN });
 }
 
 function panPlot(
@@ -261,8 +335,8 @@ export function centerChartView(chart: ECharts, values: OhlcBar[] = []): { min: 
   applyX(chart, 100 - span, 100);
 
   const from = Math.max(0, Math.floor(((100 - span) / 100) * rows.length));
-  const window = rows.slice(from);
-  const last = rows[rows.length - 1];
+  const window = rows.slice(from).filter((item) => Number.isFinite(item.low) && Number.isFinite(item.high));
+  const last = [...rows].reverse().find((item) => Number.isFinite(item.close) && Number.isFinite(item.low));
   if (!last || window.length === 0) {
     (chart as ChartWithLock).__avizorYLock = null;
     patchPriceAxis(chart, null, null);
@@ -274,6 +348,12 @@ export function centerChartView(chart: ECharts, values: OhlcBar[] = []): { min: 
   const next = { min: low - pad, max: high + pad };
   applyY(chart, next.min, next.max);
   return next;
+}
+
+export function padChartRightView(chart: ECharts, realCount: number, pad: number): void {
+  const total = Math.max(realCount + Math.max(pad, 0), 1);
+  const keep = Math.min(total, Math.max(48, Math.round(realCount * 0.36) + Math.max(pad, 0)));
+  applyX(chart, Math.max(0, 100 - (keep / total) * 100), 100);
 }
 
 function zone(rect: Rect, width: number, height: number, x: number, y: number): "plot" | "yaxis" | "xaxis" | "none" {
@@ -375,8 +455,13 @@ export function bindChartScale(chart: ECharts, handlers: ScaleHandlers = {}): ()
       }
       if (current.kind === "xscale") {
         const factor = Math.exp((current.x - event.offsetX) * 0.006);
-        const span = clamp((current.end - current.start) * factor, 3, 100);
-        applyX(chart, current.anchor - span / 2, current.anchor + span / 2);
+        const span = clamp((current.end - current.start) * factor, 2.4, 100);
+        if (current.end >= 99.15) {
+          applyX(chart, 100 - span, 100);
+        } else {
+          applyX(chart, current.anchor - span / 2, current.anchor + span / 2);
+        }
+        fitYToVisible(chart, handlers);
         handlers.onView?.();
         return;
       }
@@ -424,33 +509,29 @@ export function bindChartScale(chart: ECharts, handlers: ScaleHandlers = {}): ()
     const hit = zone(rect, dom.clientWidth, dom.clientHeight, event.offsetX, event.offsetY);
     const native = event.event;
     const delta = native?.deltaY ?? event.wheelDelta ?? 0;
-    if (hit === "yaxis") {
-      native?.preventDefault?.();
-      const extent = readYExtent(chart);
-      const anchor = priceAt(chart, event.offsetY);
-      if (!extent || anchor === null) {
-        return;
-      }
-      const factor = Math.exp(-delta * 0.001);
-      const range = (extent.max - extent.min) * factor;
-      const t = (anchor - extent.min) / Math.max(extent.max - extent.min, 1e-8);
-      const min = anchor - range * t;
-      lockY(min, min + range);
-      handlers.onView?.();
+    if (hit === "none" || delta === 0) {
       return;
     }
-    if (hit === "plot" && native?.shiftKey) {
-      native.preventDefault?.();
-      const extent = readYExtent(chart);
-      if (!extent) {
+    native?.preventDefault?.();
+    window.cancelAnimationFrame(frame);
+    frame = window.requestAnimationFrame(() => {
+      if (hit === "yaxis" || (hit === "plot" && native?.shiftKey)) {
+        const extent = readYExtent(chart);
+        const anchor = hit === "yaxis" ? priceAt(chart, event.offsetY) : (extent ? (extent.min + extent.max) / 2 : null);
+        if (!extent || anchor === null) {
+          return;
+        }
+        const range = (extent.max - extent.min) * Math.exp(-delta * 0.0014);
+        const t = (anchor - extent.min) / Math.max(extent.max - extent.min, 1e-8);
+        const min = anchor - range * t;
+        lockY(min, min + range);
+        handlers.onView?.();
         return;
       }
-      const factor = Math.exp(-delta * 0.001);
-      const mid = (extent.min + extent.max) / 2;
-      const range = (extent.max - extent.min) * factor;
-      lockY(mid - range / 2, mid + range / 2);
-      handlers.onView?.();
-    }
+      if (hit === "plot" || hit === "xaxis") {
+        zoomTimeWindow(chart, delta, event.offsetX, rect, handlers);
+      }
+    });
   }
 
   zr.on("mousedown", onDown);

@@ -4,6 +4,7 @@ import {
   CircleHelp,
   Crosshair,
   Fan,
+  ArrowRightFromLine,
   LocateFixed,
   Lock,
   Magnet,
@@ -13,6 +14,8 @@ import {
   Star,
   Target,
   Trash2,
+  TrendingDown,
+  TrendingUp,
   Type,
   Waves,
 } from "lucide-react";
@@ -66,6 +69,7 @@ interface ChartLeftRailProps {
   onToggleLock: () => void;
   onClear: () => void;
   onCenter: () => void;
+  onRightPad: () => void;
 }
 
 export function ChartLeftRail({
@@ -79,6 +83,7 @@ export function ChartLeftRail({
   onToggleLock,
   onClear,
   onCenter,
+  onRightPad,
 }: ChartLeftRailProps) {
   const railRef = useRef<HTMLElement>(null);
   const activeGroup = groupForTool(tool);
@@ -153,12 +158,13 @@ export function ChartLeftRail({
               className={`flex h-8 w-8 items-center justify-center rounded-md transition ${
                 selected || open
                   ? "bg-[#00FF66]/10 text-[#00FF66] shadow-[inset_0_0_0_1px_rgba(0,255,102,0.32)]"
-                  : "text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200"
+                  : "text-zinc-200 hover:bg-white/[0.06] hover:text-white"
               }`}
             >
               <Icon className="h-[17px] w-[17px]" />
             </button>
             {group.id === "cursor" ? (
+              <>
               <button
                 type="button"
                 title="Centrar gráfico"
@@ -168,6 +174,48 @@ export function ChartLeftRail({
               >
                 <LocateFixed className="h-[17px] w-[17px]" strokeWidth={1.75} />
               </button>
+              <button
+                type="button"
+                title="Espacio a la derecha de la última vela"
+                aria-label="Espacio a la derecha de la última vela"
+                onClick={onRightPad}
+                className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-md text-zinc-200 hover:bg-white/[0.06] hover:text-[#00FF66]"
+              >
+                <ArrowRightFromLine className="h-[17px] w-[17px]" strokeWidth={1.75} />
+              </button>
+              <button
+                type="button"
+                title="Caja BUY · entry / TP / SL"
+                aria-label="Caja BUY entry TP SL"
+                onClick={() => {
+                  onTool("long_position");
+                  onOpenGroup(null);
+                }}
+                className={`mt-0.5 flex h-8 w-8 items-center justify-center rounded-md ${
+                  tool === "long_position"
+                    ? "bg-[#00FF66]/12 text-[#00FF66] shadow-[inset_0_0_0_1px_rgba(0,255,102,0.35)]"
+                    : "text-zinc-200 hover:bg-white/[0.06] hover:text-[#00FF66]"
+                }`}
+              >
+                <TrendingUp className="h-[17px] w-[17px]" strokeWidth={1.75} />
+              </button>
+              <button
+                type="button"
+                title="Caja SELL · entry / TP / SL"
+                aria-label="Caja SELL entry TP SL"
+                onClick={() => {
+                  onTool("short_position");
+                  onOpenGroup(null);
+                }}
+                className={`mt-0.5 flex h-8 w-8 items-center justify-center rounded-md ${
+                  tool === "short_position"
+                    ? "bg-[#FF3366]/12 text-[#FF3366] shadow-[inset_0_0_0_1px_rgba(255,51,102,0.4)]"
+                    : "text-zinc-200 hover:bg-white/[0.06] hover:text-[#FF3366]"
+                }`}
+              >
+                <TrendingDown className="h-[17px] w-[17px]" strokeWidth={1.75} />
+              </button>
+              </>
             ) : null}
 
             {group.flyout && open ? (
@@ -198,7 +246,7 @@ export function ChartLeftRail({
                                   onOpenGroup(null);
                                 }}
                                 className={`flex min-w-0 flex-1 items-center gap-2.5 px-1.5 py-1.5 text-left text-[13px] leading-tight tracking-tight transition ${
-                                  on ? "text-white" : "text-zinc-200 group-hover:text-[#00FF66]"
+                                  on ? "text-zinc-200" : "text-zinc-200 group-hover:text-[#00FF66]"
                                 }`}
                               >
                                 <DrawToolGlyph id={item.id} active={on} />
@@ -235,7 +283,7 @@ export function ChartLeftRail({
         type="button"
         title="Eliminar dibujos"
         onClick={onClear}
-        className="mt-auto flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 hover:bg-red-500/10 hover:text-red-400"
+        className="mt-auto flex h-8 w-8 items-center justify-center rounded-md text-zinc-300 hover:bg-red-500/10 hover:text-red-400"
       >
         <Trash2 className="h-[17px] w-[17px]" strokeWidth={1.75} />
       </button>

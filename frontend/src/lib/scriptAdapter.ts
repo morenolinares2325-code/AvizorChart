@@ -170,8 +170,7 @@ function parseTypeScript(
   }
 
   if (plots.length === 0) {
-    notes.push("No se detectaron overlay()/pane() en TypeScript. Plantilla EMA 21.");
-    plots.push(makePlot({ method: "ema", source: "close", period: 21, pane: "overlay" }, named, "#00FF66"));
+    notes.push("No se detectaron overlay()/pane() en TypeScript. No se aplicó ninguna plantilla genérica.");
   }
 
   return { name: named, avizor: plotsToTypeScript(named, plots), plots };
@@ -245,10 +244,7 @@ function adaptPine(source: string, nameHint: string, notes: string[]): Omit<Adap
   }
 
   if (plots.length === 0) {
-    notes.push("Sin series reconocidas. Se genera un EMA 21 sobre close como plantilla.");
-    plots.push(
-      makePlot({ method: "ema", source: "close", period: 21, pane: "overlay" }, title, "#00FF66"),
-    );
+    notes.push("Sin series reconocidas. No se aplicó ninguna plantilla genérica.");
   }
 
   return { name: title, avizor: plotsToAvizor(title, plots), plots };
