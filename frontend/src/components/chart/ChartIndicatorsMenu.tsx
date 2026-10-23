@@ -169,6 +169,11 @@ export function ChartIndicatorsMenu({
             </button>
             {expanded === "builder" ? (
               <div className="space-y-1 px-3 pb-3">
+                {savedScripts.length === 0 ? (
+                  <p className="py-1 font-mono text-[10px] leading-4 text-zinc-600">
+                    Compila un indicador en Builder para verlo aquí y en el gráfico.
+                  </p>
+                ) : null}
                 {savedScripts.map((script) => (
                   <div key={script.id} className="flex items-center gap-2 py-1 text-xs text-zinc-300">
                     <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">

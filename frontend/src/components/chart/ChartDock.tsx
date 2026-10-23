@@ -10,12 +10,13 @@ import {
 import type { BuiltIndicator } from "@/components/chart/chartIndicatorBuilder";
 import type { IndicatorSettingsMap } from "@/components/chart/chartIndicatorSettings";
 import { WATCHLISTS, type IndicatorId, type RightUtilId, type WatchlistId } from "@/components/chart/chartTypes";
+import { ChartVisualStudio } from "@/components/chart/ChartVisualStudio";
 import {
   backgroundPresetsFor,
   DEFAULT_CHART_THEME,
   LIGHT_CANVAS,
   LIGHT_CHROME,
-  normalizeNeon,
+  normalizeChartTheme,
   saveChartTheme,
   type ChartVisualTheme,
   type CrosshairStyle,
@@ -80,7 +81,7 @@ export function ChartDock({
   return (
     <aside
       data-chrome="panel"
-      className={`flex shrink-0 flex-col border-l border-[#1F1F2E] ${newsDesk ? "w-[min(44rem,46vw)] bg-transparent" : "w-72 bg-[#0A0A0F]"}`}
+      className={`flex shrink-0 flex-col border-l border-[#1F1F2E] ${newsDesk ? "w-[min(44rem,46vw)] bg-transparent" : tab === "editor" || tab === "settings" ? "w-80 bg-[#0A0A0F]" : "w-72 bg-[#0A0A0F]"}`}
     >
       <header className={`flex h-10 shrink-0 items-center justify-between border-b border-[#1F1F2E] pr-3 ${newsDesk ? "bg-black" : ""}`}>
         <SectionLabel>{title}</SectionLabel>
@@ -265,42 +266,14 @@ function EditorPane({
 
   return (
     <div className="space-y-3">
-      <p className="text-[11px] leading-relaxed text-zinc-400">
-        Estilos visuales del canvas. Los cambios se aplican al instante y se guardan en este navegador.
-      </p>
-
-      <Section title="Velas y mechas">
-        <ColorRow label="Cuerpo alcista" value={theme.bull} onChange={(bull) => patch({ bull })} />
-        <ColorRow label="Cuerpo bajista" value={theme.bear} onChange={(bear) => patch({ bear })} />
-        <ColorRow label="Borde alcista" value={theme.outlineBull} onChange={(outlineBull) => patch({ outlineBull })} />
-        <ColorRow label="Borde bajista" value={theme.outlineBear} onChange={(outlineBear) => patch({ outlineBear })} />
-        <ColorRow label="Mecha alcista" value={theme.wickBull} onChange={(wickBull) => patch({ wickBull })} />
-        <ColorRow label="Mecha bajista" value={theme.wickBear} onChange={(wickBear) => patch({ wickBear })} />
-        <Slider
-          label={`Grosor · ${theme.candleBorder.toFixed(1)}px`}
-          value={theme.candleBorder}
-          min={0.2}
-          max={4}
-          step={0.05}
-          onChange={(value) => patch({ candleBorder: value, wickWidth: value, gridWidth: value })}
-        />
-        <Slider
-          label={`Nitidez · ${theme.candleSharpness.toFixed(1)}`}
-          value={theme.candleSharpness}
-          min={1}
-          max={4}
-          step={0.05}
-          onChange={(value) => patch({ candleSharpness: value })}
-        />
-        <Slider
-          label={`Neón · ${normalizeNeon(theme.neon).toFixed(1)}`}
-          value={normalizeNeon(theme.neon)}
-          min={0}
-          max={4}
-          step={0.05}
-          onChange={(value) => patch({ neon: value })}
-        />
-      </Section>
+      <ChartVisualStudio
+        theme={theme}
+        onTheme={(next) => {
+          const normalized = normalizeChartTheme(next);
+          onTheme(normalized);
+          saveChartTheme(normalized);
+        }}
+      />
 
       <Section title="Fondo">
         <div className="flex items-center justify-between gap-2">
@@ -484,37 +457,6 @@ function Toggle({
     <label className="flex cursor-pointer items-center justify-between gap-2">
       <span className="font-mono text-[10px] uppercase tracking-wide text-zinc-500">{label}</span>
       <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="accent-[#00FF66]" />
-    </label>
-  );
-}
-
-function Slider({
-  label,
-  value,
-  onChange,
-  min = 1,
-  max = 4,
-  step = 0.05,
-}: {
-  label: string;
-  value: number;
-  onChange: (value: number) => void;
-  min?: number;
-  max?: number;
-  step?: number;
-}) {
-  return (
-    <label className="block">
-      <span className="mb-1 block font-mono text-[10px] uppercase tracking-wide text-zinc-500">{label}</span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-        className="w-full accent-[#00FF66]"
-      />
     </label>
   );
 }

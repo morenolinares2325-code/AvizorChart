@@ -103,6 +103,8 @@ PINE_COLORS = {
 
 def detect_language(source: str) -> str:
     text = source.lower()
+    if "calgo" in text or "indicatordataseries" in text or "bars.closeprices" in text or "using calgo" in text:
+        return "ctrader"
     if any(
         token in text
         for token in (
@@ -126,12 +128,13 @@ def detect_language(source: str) -> str:
     return "typescript"
 
 
-def transpile(source: str, name_hint: str = "") -> dict[str, Any]:
+def transpile(source: str, name_hint: str = "", language_hint: str = "") -> dict[str, Any]:
     code = source or ""
-    language = detect_language(code)
+    hinted = (language_hint or "").strip().lower()
+    language = hinted if hinted in {"pine", "mql5", "ctrader", "typescript", "avizor"} else detect_language(code)
     notes: list[str] = []
 
-    if language in {"typescript", "avizor"}:
+    if language in {"typescript", "avizor", "ctrader"}:
         return {
             "status": "passthrough",
             "language": language,

@@ -340,6 +340,8 @@ export function MegaChartWorkspace() {
         split={split}
         onSplit={applySplit}
         onUndock={() => undock("chart")}
+        theme={theme}
+        onTheme={(next) => patchFocus({ theme: normalizeChartTheme(next) })}
       />
 
       <div className="flex min-h-0 flex-1">

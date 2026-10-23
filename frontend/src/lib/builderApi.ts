@@ -18,7 +18,7 @@ export interface BuilderTranspileResult extends AdaptResult {
 }
 
 function asLanguage(value: unknown): ScriptLanguage {
-  if (value === "mql5" || value === "pine" || value === "avizor" || value === "typescript") {
+  if (value === "mql5" || value === "pine" || value === "avizor" || value === "typescript" || value === "ctrader") {
     return value;
   }
   if (value === "pinescript") {
@@ -27,13 +27,17 @@ function asLanguage(value: unknown): ScriptLanguage {
   return "pine";
 }
 
-export async function transpileOnServer(source: string, name = ""): Promise<BuilderTranspileResult> {
+export async function transpileOnServer(
+  source: string,
+  name = "",
+  language?: ScriptLanguage,
+): Promise<BuilderTranspileResult> {
   let response: Response;
   try {
     response = await fetch(`${API_BASE}/api/builder/transpile`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ source, name }),
+      body: JSON.stringify({ source, name, language }),
     });
   } catch {
     throw new Error(

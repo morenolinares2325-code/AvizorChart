@@ -1,7 +1,10 @@
 export type BackgroundMode = "solid" | "vertical" | "horizontal" | "radial";
 export type CrosshairStyle = "solid" | "dashed" | "hidden";
-
 export type ChartScheme = "dark" | "light";
+export type VisualPaletteId = "cyberpunk" | "tradingview" | "matrix" | "minimal";
+export type StrokeWeight = "thin" | "normal" | "thick";
+export type FpsLimit = 60 | 120 | 0;
+export type PixelScale = 1 | 2;
 
 export interface ChartVisualTheme {
   bull: string;
@@ -42,6 +45,13 @@ export interface ChartVisualTheme {
   chromeBorder: string;
   chromeMenu: string;
   scheme: ChartScheme;
+  paletteId: VisualPaletteId;
+  gamma: number;
+  strokeWeight: StrokeWeight;
+  antialias: boolean;
+  fpsLimit: FpsLimit;
+  pixelRatio: PixelScale;
+  performanceMode: boolean;
 }
 
 export const DEFAULT_CHART_THEME: ChartVisualTheme = {
@@ -83,6 +93,13 @@ export const DEFAULT_CHART_THEME: ChartVisualTheme = {
   chromeBorder: "#1F1F2E",
   chromeMenu: "#0A0A0F",
   scheme: "dark",
+  paletteId: "tradingview",
+  gamma: 1,
+  strokeWeight: "normal",
+  antialias: true,
+  fpsLimit: 0,
+  pixelRatio: 2,
+  performanceMode: false,
 };
 
 export const LIGHT_CHROME: Pick<
@@ -370,7 +387,139 @@ export const NEON_PALETTE: Pick<ChartVisualTheme, (typeof NEON_COLOR_KEYS)[numbe
   chromeMenu: "#05110C",
 };
 
-export const NEON_MAX = 4;
+export const NEON_MAX = 8;
+
+export const STROKE_PX: Record<StrokeWeight, number> = {
+  thin: 0.65,
+  normal: 1.15,
+  thick: 2.25,
+};
+
+export const VISUAL_PALETTES: {
+  id: VisualPaletteId;
+  label: string;
+  hint: string;
+  swatches: [string, string, string];
+  theme: Partial<ChartVisualTheme>;
+}[] = [
+  {
+    id: "cyberpunk",
+    label: "Cyberpunk Neon",
+    hint: "Magenta / cian",
+    swatches: ["#00F5FF", "#FF007F", "#DFFF00"],
+    theme: {
+      bull: "#00F5FF",
+      bear: "#FF007F",
+      outlineBull: "#9AFFFF",
+      outlineBear: "#FF5CB3",
+      wickBull: "#D4FFFF",
+      wickBear: "#FFB3DE",
+      grid: "#2A1040",
+      axis: "#E0B3FF",
+      volumeBull: "rgba(0,245,255,0.38)",
+      volumeBear: "rgba(255,0,127,0.4)",
+      background: "#05010A",
+      backgroundTo: "#120018",
+      backgroundMode: "radial",
+      ema20: "#00F5FF",
+      ema50: "#DFFF00",
+      ema200: "#BF00FF",
+      bidColor: "#00F5FF",
+      askColor: "#FF007F",
+      crosshairColor: "#FF00EA",
+      uiAccent: "#00F5FF",
+      neon: 6.5,
+      paletteId: "cyberpunk",
+    },
+  },
+  {
+    id: "tradingview",
+    label: "Classic TradingView",
+    hint: "Verde / rojo",
+    swatches: ["#26A69A", "#EF5350", "#131722"],
+    theme: {
+      bull: "#26A69A",
+      bear: "#EF5350",
+      outlineBull: "#26A69A",
+      outlineBear: "#EF5350",
+      wickBull: "#26A69A",
+      wickBear: "#EF5350",
+      grid: "#2A2E39",
+      axis: "#B2B5BE",
+      background: "#131722",
+      backgroundTo: "#131722",
+      backgroundMode: "solid",
+      volumeBull: "rgba(38,166,154,0.28)",
+      volumeBear: "rgba(239,83,80,0.28)",
+      ema20: "#2962FF",
+      ema50: "#FF6D00",
+      ema200: "#E040FB",
+      crosshairColor: "#9598A1",
+      neon: 0,
+      paletteId: "tradingview",
+    },
+  },
+  {
+    id: "matrix",
+    label: "Matrix Green",
+    hint: "Fósforo",
+    swatches: ["#00FF66", "#003B14", "#7CFFB2"],
+    theme: {
+      bull: "#00FF66",
+      bear: "#007A33",
+      outlineBull: "#39FF14",
+      outlineBear: "#14532D",
+      wickBull: "#9AFFC7",
+      wickBear: "#166534",
+      grid: "#052E16",
+      axis: "#86EFAC",
+      background: "#020805",
+      backgroundTo: "#001A0A",
+      backgroundMode: "radial",
+      volumeBull: "rgba(0,255,102,0.4)",
+      volumeBear: "rgba(20,83,45,0.45)",
+      ema20: "#00FF66",
+      ema50: "#4ADE80",
+      ema200: "#14532D",
+      crosshairColor: "#00FF66",
+      uiAccent: "#00FF66",
+      neon: 5,
+      paletteId: "matrix",
+    },
+  },
+  {
+    id: "minimal",
+    label: "Minimal Dark",
+    hint: "Bajo ruido",
+    swatches: ["#A1A1AA", "#3F3F46", "#09090B"],
+    theme: {
+      bull: "#A1A1AA",
+      bear: "#52525B",
+      outlineBull: "#D4D4D8",
+      outlineBear: "#3F3F46",
+      wickBull: "#E4E4E7",
+      wickBear: "#71717A",
+      grid: "#18181B",
+      axis: "#A1A1AA",
+      background: "#09090B",
+      backgroundTo: "#09090B",
+      backgroundMode: "solid",
+      volumeBull: "rgba(161,161,170,0.22)",
+      volumeBear: "rgba(82,82,91,0.28)",
+      ema20: "#E4E4E7",
+      ema50: "#A1A1AA",
+      ema200: "#71717A",
+      crosshairColor: "#52525B",
+      neon: 0,
+      paletteId: "minimal",
+    },
+  },
+];
+
+export function applyVisualPalette(theme: ChartVisualTheme, id: VisualPaletteId): ChartVisualTheme {
+  const preset = VISUAL_PALETTES.find((item) => item.id === id) ?? VISUAL_PALETTES[0];
+  return normalizeChartTheme({ ...theme, ...preset.theme, paletteId: id });
+}
 
 export function normalizeNeon(value: unknown): number {
   if (value === true) {
@@ -402,10 +551,33 @@ export function normalizeChartTheme(theme: ChartVisualTheme): ChartVisualTheme {
           >,
         }
       : theme;
+  const paletteId: VisualPaletteId =
+    base.paletteId === "cyberpunk" ||
+    base.paletteId === "matrix" ||
+    base.paletteId === "minimal" ||
+    base.paletteId === "tradingview"
+      ? base.paletteId
+      : "tradingview";
+  const strokeWeight: StrokeWeight =
+    base.strokeWeight === "thin" || base.strokeWeight === "thick" ? base.strokeWeight : "normal";
+  const fpsLimit: FpsLimit = base.fpsLimit === 60 || base.fpsLimit === 120 ? base.fpsLimit : 0;
+  const pixelRatio: PixelScale = base.pixelRatio === 1 ? 1 : 2;
+  const gamma = Number.isFinite(Number(base.gamma)) ? Math.min(1.6, Math.max(0.7, Number(base.gamma))) : 1;
   return {
     ...base,
     neon: wasFlag ? NEON_MAX : normalizeNeon(rawNeon),
     scheme: base.scheme === "light" ? "light" : "dark",
+    paletteId,
+    gamma,
+    strokeWeight,
+    antialias: base.antialias !== false,
+    fpsLimit,
+    pixelRatio,
+    performanceMode: Boolean(base.performanceMode),
+    candleBorder: STROKE_PX[strokeWeight],
+    wickWidth: STROKE_PX[strokeWeight],
+    gridWidth: Math.max(0.6, STROKE_PX[strokeWeight] * 0.85),
+    candleSharpness: base.antialias === false ? 1 : Math.max(base.candleSharpness || 3, 2.4),
   };
 }
 
@@ -460,34 +632,79 @@ export function mixColor(from: string, to: string, amount: number): string {
   return `#${toHex(r)}${toHex(g)}${toHex(bl)}`;
 }
 
-export function applyNeonTheme(theme: ChartVisualTheme): ChartVisualTheme {
-  const amount = neonAmount(theme);
-  if (amount <= 0) {
-    return applyChartScheme(theme);
+function liftGamma(color: string, gamma: number): string {
+  if (Math.abs(gamma - 1) < 0.02) {
+    return color;
   }
+  const [r, g, b, a] = parseColor(color);
+  const adj = (channel: number) => Math.min(255, Math.max(0, 255 * Math.pow(channel / 255, 1 / gamma)));
+  if (color.includes("rgba") || a < 0.999) {
+    return `rgba(${Math.round(adj(r))},${Math.round(adj(g))},${Math.round(adj(b))},${a.toFixed(3)})`;
+  }
+  return `#${toHex(adj(r))}${toHex(adj(g))}${toHex(adj(b))}`;
+}
+
+export function applyNeonTheme(theme: ChartVisualTheme): ChartVisualTheme {
+  const amount = Math.min(1, neonAmount(theme) * 1.18);
   const light = theme.scheme === "light";
-  return applyChartScheme({
+  const glow = (color: string, lift = 0.42) => mixColor(color, "#FFFFFF", amount * lift);
+  const neonized =
+    amount <= 0
+      ? applyChartScheme(theme)
+      : applyChartScheme({
+          ...theme,
+          bull: glow(theme.bull, 0.28),
+          bear: glow(theme.bear, 0.22),
+          outlineBull: glow(theme.outlineBull, 0.48),
+          outlineBear: glow(theme.outlineBear, 0.4),
+          wickBull: glow(theme.wickBull, 0.55),
+          wickBear: glow(theme.wickBear, 0.5),
+          grid: light ? theme.grid : mixColor(theme.grid, theme.bull, amount * 0.35),
+          axis: glow(theme.axis, light ? 0 : 0.22),
+          volumeBull: mixColor(theme.volumeBull, theme.bull, amount * 0.45),
+          volumeBear: mixColor(theme.volumeBear, theme.bear, amount * 0.45),
+          background: light ? theme.background : mixColor(theme.background, "#010104", Math.min(1, amount * 0.7)),
+          backgroundTo: light ? theme.backgroundTo : mixColor(theme.backgroundTo, "#000000", amount * 0.55),
+          backgroundMode: light || amount <= 0.2 ? theme.backgroundMode : "radial",
+          ema20: glow(theme.ema20, 0.3),
+          ema50: glow(theme.ema50, 0.28),
+          ema200: glow(theme.ema200, 0.28),
+          bidColor: glow(theme.bidColor, 0.25),
+          askColor: glow(theme.askColor, 0.25),
+          crosshairColor: glow(theme.crosshairColor, light ? 0 : 0.35),
+          uiAccent: glow(theme.uiAccent, 0.2),
+        });
+  return applyGammaTheme(neonized, theme.gamma ?? 1);
+}
+
+export function applyGammaTheme(theme: ChartVisualTheme, gamma: number): ChartVisualTheme {
+  const g = Number.isFinite(gamma) ? Math.min(1.6, Math.max(0.7, gamma)) : 1;
+  return {
     ...theme,
-    bull: mixColor(theme.bull, NEON_PALETTE.bull, amount),
-    bear: mixColor(theme.bear, NEON_PALETTE.bear, amount),
-    outlineBull: mixColor(theme.outlineBull, NEON_PALETTE.outlineBull, amount),
-    outlineBear: mixColor(theme.outlineBear, NEON_PALETTE.outlineBear, amount),
-    wickBull: mixColor(theme.wickBull, NEON_PALETTE.wickBull, amount),
-    wickBear: mixColor(theme.wickBear, NEON_PALETTE.wickBear, amount),
-    grid: mixColor(theme.grid, light ? theme.grid : NEON_PALETTE.grid, light ? 0 : amount),
-    axis: mixColor(theme.axis, light ? theme.axis : NEON_PALETTE.axis, light ? 0 : amount),
-    volumeBull: mixColor(theme.volumeBull, NEON_PALETTE.volumeBull, amount),
-    volumeBear: mixColor(theme.volumeBear, NEON_PALETTE.volumeBear, amount),
-    background: light ? theme.background : mixColor(theme.background, NEON_PALETTE.background, amount),
-    backgroundTo: light ? theme.backgroundTo : mixColor(theme.backgroundTo, NEON_PALETTE.backgroundTo, amount),
-    backgroundMode: light || amount <= 0.35 ? theme.backgroundMode : "radial",
-    ema20: mixColor(theme.ema20, NEON_PALETTE.ema20, amount),
-    ema50: mixColor(theme.ema50, NEON_PALETTE.ema50, amount),
-    ema200: mixColor(theme.ema200, NEON_PALETTE.ema200, amount),
-    bidColor: mixColor(theme.bidColor, NEON_PALETTE.bidColor, amount),
-    askColor: mixColor(theme.askColor, NEON_PALETTE.askColor, amount),
-    crosshairColor: mixColor(theme.crosshairColor, light ? theme.crosshairColor : NEON_PALETTE.crosshairColor, light ? 0 : amount),
-  });
+    background: liftGamma(theme.background, g),
+    backgroundTo: liftGamma(theme.backgroundTo, g),
+    grid: liftGamma(theme.grid, g),
+    axis: liftGamma(theme.axis, g),
+    uiText: liftGamma(theme.uiText, g),
+  };
+}
+
+export function applyVisualTheme(theme: ChartVisualTheme): ChartVisualTheme {
+  const visual = applyNeonTheme(theme);
+  const px = STROKE_PX[visual.strokeWeight] ?? STROKE_PX.normal;
+  return {
+    ...visual,
+    candleBorder: px,
+    wickWidth: px,
+    gridWidth: Math.max(0.55, px * 0.85),
+  };
+}
+
+export function neonGlowPx(theme: ChartVisualTheme): number {
+  if (theme.performanceMode) {
+    return neonAmount(theme) * 10;
+  }
+  return neonAmount(theme) * 28;
 }
 
 export function chromeVars(theme: ChartVisualTheme): Record<string, string> {

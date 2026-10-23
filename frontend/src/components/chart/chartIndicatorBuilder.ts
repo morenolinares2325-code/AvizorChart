@@ -161,6 +161,19 @@ export function computeBuiltSeries(
   values: OhlcBar[],
   volumes: number[],
 ): (number | null)[] {
+  try {
+    return computeBuiltSeriesUnsafe(item, values, volumes);
+  } catch (err) {
+    console.error("[Avizor][KLine] computeBuiltSeries", item.name, item.method, err);
+    return values.map(() => null);
+  }
+}
+
+function computeBuiltSeriesUnsafe(
+  item: BuiltIndicator,
+  values: OhlcBar[],
+  volumes: number[],
+): (number | null)[] {
   const period = clampPeriod(item.period);
   if (item.method === "signal_buy" || item.method === "signal_sell") {
     return computeSignalMarkers(item, values);

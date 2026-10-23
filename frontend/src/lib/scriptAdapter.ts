@@ -7,7 +7,7 @@ import {
   type BuilderSource,
 } from "@/components/chart/chartIndicatorBuilder";
 
-export type ScriptLanguage = "typescript" | "pine" | "mql5" | "avizor";
+export type ScriptLanguage = "typescript" | "pine" | "mql5" | "avizor" | "ctrader";
 
 export interface AdaptResult {
   language: ScriptLanguage;
@@ -37,6 +37,16 @@ const PINE_COLORS: Record<string, string> = {
 
 export function detectLanguage(source: string): ScriptLanguage {
   const text = source.toLowerCase();
+  if (
+    text.includes("calgo") ||
+    text.includes("indicatordataseries") ||
+    text.includes("bars.closeprices") ||
+    text.includes("exponentialmovingaverage") ||
+    text.includes("using calgo") ||
+    /\[indicator\s*\(/.test(text)
+  ) {
+    return "ctrader";
+  }
   if (
     text.includes("oncalculate") ||
     text.includes("oninit") ||
@@ -69,19 +79,23 @@ export function detectLanguage(source: string): ScriptLanguage {
   return "typescript";
 }
 
-export function adaptScript(source: string, nameHint = ""): AdaptResult {
-  const language = detectLanguage(source);
+export function adaptScript(source: string, nameHint = "", languageHint?: ScriptLanguage): AdaptResult {
+  const language = languageHint ?? detectLanguage(source);
   const notes: string[] = [];
-  if (language === "typescript") {
+  if (language === "typescript" || language === "avizor") {
+    if (language === "avizor" || source.includes("//@avizor")) {
+      const parsed = parseAvizor(source, nameHint);
+      return { ...parsed, language, notes };
+    }
     const parsed = parseTypeScript(source, nameHint, notes);
-    return { ...parsed, language, notes };
-  }
-  if (language === "avizor") {
-    const parsed = parseAvizor(source, nameHint);
     return { ...parsed, language, notes };
   }
   if (language === "mql5") {
     const parsed = adaptMql(source, nameHint, notes);
+    return { ...parsed, language, notes };
+  }
+  if (language === "ctrader") {
+    const parsed = adaptCTrader(source, nameHint, notes);
     return { ...parsed, language, notes };
   }
   const parsed = adaptPine(source, nameHint, notes);
@@ -248,6 +262,63 @@ function adaptPine(source: string, nameHint: string, notes: string[]): Omit<Adap
   }
 
   return { name: title, avizor: plotsToAvizor(title, plots), plots };
+}
+
+function adaptCTrader(source: string, nameHint: string, notes: string[]): Omit<AdaptResult, "language" | "notes"> {
+  const title =
+    nameHint.trim() ||
+    pickString(source, /class\s+(\w+)\s*:\s*Indicator/) ||
+    pickString(source, /\[Indicator\s*\([^)]*Name\s*=\s*"([^"]+)"/i) ||
+    "Indicador cTrader";
+  const overlay = !/IsOverlay\s*=\s*false/i.test(source);
+  const pane: BuilderPane = overlay ? "overlay" : "pane";
+  const plots: BuiltIndicator[] = [];
+  const paramRe = /\[Parameter\s*\(\s*"([^"]*)"[^]]*DefaultValue\s*=\s*(-?\d+)/gi;
+  const periods: number[] = [];
+  let hit: RegExpExecArray | null;
+  while ((hit = paramRe.exec(source))) {
+    periods.push(Number(hit[2]));
+  }
+  const calls = [
+    { re: /ExponentialMovingAverage|MovingAverageType\.Exponential/i, method: "ema" as const },
+    { re: /SimpleMovingAverage|MovingAverageType\.Simple/i, method: "sma" as const },
+    { re: /RelativeStrengthIndex/i, method: "rsi" as const },
+    { re: /AverageTrueRange/i, method: "atr" as const },
+    { re: /StandardDeviation/i, method: "stddev" as const },
+    { re: /MomentumOscillator|PriceROC/i, method: "roc" as const },
+  ];
+  let periodIndex = 0;
+  for (const call of calls) {
+    if (!call.re.test(source)) {
+      continue;
+    }
+    const period = periods[periodIndex] ?? periods[0] ?? 14;
+    periodIndex += 1;
+    const methodPane: BuilderPane = call.method === "rsi" || call.method === "roc" || call.method === "stddev" ? "pane" : pane;
+    plots.push(
+      makePlot(
+        { method: call.method, source: "close", period, pane: methodPane },
+        `${title} ${defaultBuiltName(call.method, period, "close")}`,
+        nextColor(plots.length),
+      ),
+    );
+  }
+  const outputRe = /\[Output\s*\(\s*"([^"]*)"(?:[^]]*LineColor\s*=\s*"([^"]+)")?/gi;
+  let outputIndex = 0;
+  while ((hit = outputRe.exec(source))) {
+    const plot = plots[outputIndex];
+    if (plot) {
+      plot.name = hit[1] || plot.name;
+      if (hit[2]) {
+        plot.color = parseColor(hit[2]) || plot.color;
+      }
+    }
+    outputIndex += 1;
+  }
+  if (plots.length === 0) {
+    notes.push("No se reconocieron ExponentialMovingAverage / RSI / ATR en cTrader. Reescribe el cálculo en TypeScript nativo.");
+  }
+  return { name: title, avizor: plotsToTypeScript(title, plots), plots };
 }
 
 function adaptMql(source: string, nameHint: string, notes: string[]): Omit<AdaptResult, "language" | "notes"> {

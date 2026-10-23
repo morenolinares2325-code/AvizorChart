@@ -37,9 +37,10 @@ export function klineStyles(theme: ChartVisualTheme, chartType: ChartPriceType =
         downBorderColor: theme.outlineBear,
         upWickColor: theme.wickBull,
         downWickColor: theme.wickBear,
+        noChangeColor: theme.axis,
       },
       area: {
-        lineSize: 1.6,
+        lineSize: Math.max(1, theme.candleBorder * 1.4),
         lineColor: theme.bull,
         value: "close",
         backgroundColor: [
@@ -60,7 +61,7 @@ export function klineStyles(theme: ChartVisualTheme, chartType: ChartPriceType =
             show: true,
             style: LineType.Dashed,
             dashedValue,
-            size: 1,
+            size: Math.max(1, theme.gridWidth),
           },
         },
       },
@@ -113,6 +114,7 @@ export function klineStyles(theme: ChartVisualTheme, chartType: ChartPriceType =
           color: theme.crosshairColor,
           style: hair,
           dashedValue,
+          size: Math.max(0.75, theme.gridWidth),
         },
         text: {
           color: light ? "#050508" : "#fafafa",
@@ -124,6 +126,7 @@ export function klineStyles(theme: ChartVisualTheme, chartType: ChartPriceType =
           color: theme.crosshairColor,
           style: hair,
           dashedValue,
+          size: Math.max(0.75, theme.gridWidth),
         },
         text: {
           color: light ? "#050508" : "#fafafa",

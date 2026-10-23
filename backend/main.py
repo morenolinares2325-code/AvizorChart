@@ -463,8 +463,9 @@ def get_chart_patterns(
 
 
 class BuilderTranspileBody(BaseModel):
-    source: str = Field(..., min_length=1, description="Código Pine Script o MQL5")
+    source: str = Field(..., min_length=1, description="Código Pine Script, MQL5, cTrader o TypeScript")
     name: Optional[str] = Field(None, description="Nombre sugerido del indicador")
+    language: Optional[str] = Field(None, description="Pestaña de origen: pine, mql5, ctrader, typescript")
 
 
 @app.post("/api/builder/transpile")
@@ -477,14 +478,15 @@ def builder_transpile(payload: BuilderTranspileBody):
 
     source = (payload.source or "").strip()
     if not source:
-        raise HTTPException(status_code=400, detail="El código Pine o MQL5 está vacío.")
-    language = detect_language(source)
+        raise HTTPException(status_code=400, detail="El código de origen está vacío.")
+    hinted = (payload.language or "").strip().lower()
+    language = hinted if hinted in {"pine", "mql5", "ctrader", "typescript", "avizor"} else detect_language(source)
     try:
         if language == "mql5":
             RobustMQL5Parser(source).parse()
         elif language == "pine":
             RobustPineScriptParser(source).parse()
-        result = transpile(source, payload.name or "")
+        result = transpile(source, payload.name or "", language)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Fallo al convertir con el parser Python: {exc}") from exc
     return result

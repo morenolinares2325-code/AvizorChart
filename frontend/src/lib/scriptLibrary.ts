@@ -36,11 +36,13 @@ export function loadSavedScripts(): SavedScript[] {
         id: String(item.id ?? newScriptId()),
         name: String(item.name ?? "Indicador"),
         language:
-          item.language === "mql5" || item.language === "avizor" || item.language === "typescript"
+          item.language === "mql5" ||
+          item.language === "avizor" ||
+          item.language === "typescript" ||
+          item.language === "ctrader" ||
+          item.language === "pine"
             ? item.language
-            : item.language === "pine"
-              ? "pine"
-              : "typescript",
+            : "typescript",
         source: String(item.source ?? ""),
         avizor: String(item.avizor ?? ""),
         plots: Array.isArray(item.plots) ? (item.plots as BuiltIndicator[]) : [],
@@ -119,7 +121,7 @@ export function plotsForScripts(library: SavedScript[], enabledIds: string[]): B
     }
     return script.plots.map((plot) => ({
       ...plot,
-      id: `${id}:${plot.id}`,
+      id: `${id}_${plot.id}`,
       enabled: true,
     }));
   });

@@ -8,6 +8,7 @@ import { ChartAgentDesk } from "@/components/chart/ChartAgentDesk";
 import { ChartAutoSRMenu, type AutoSROptions } from "@/components/chart/ChartAutoSRMenu";
 import { ChartIndicatorsMenu } from "@/components/chart/ChartIndicatorsMenu";
 import { ChartPatternsMenu } from "@/components/chart/ChartPatternsMenu";
+import { ChartPaletteMenu } from "@/components/chart/ChartPaletteMenu";
 import { ChartStyleMenu } from "@/components/chart/ChartStyleMenu";
 import { ChartTimeframeMenu } from "@/components/chart/ChartTimeframeMenu";
 import type { ChartPriceType } from "@/components/chart/chartPriceTypes";
@@ -18,7 +19,7 @@ import type { IndicatorSettingsMap, IndicatorStyle } from "@/components/chart/ch
 import { INTERVALS, QUICK_TICKERS, type IndicatorId, type SplitMode, type WatchlistId } from "@/components/chart/chartTypes";
 import { searchUniverse } from "@/lib/mockScreenerData";
 import { parseChartInterval, type CandlePayload, type ChartInterval } from "@/lib/marketApi";
-import type { ChartScheme } from "@/components/chart/chartVisualTheme";
+import type { ChartScheme, ChartVisualTheme } from "@/components/chart/chartVisualTheme";
 
 interface ChartToolbarProps {
   ticker: string;
@@ -50,6 +51,8 @@ interface ChartToolbarProps {
   labMode?: boolean;
   scheme?: ChartScheme;
   onScheme?: (scheme: ChartScheme) => void;
+  theme?: ChartVisualTheme;
+  onTheme?: (next: ChartVisualTheme) => void;
 }
 
 function fmt(n: number): string {
@@ -93,6 +96,8 @@ export function ChartToolbar({
   labMode = false,
   scheme = "dark",
   onScheme,
+  theme,
+  onTheme,
 }: ChartToolbarProps) {
   const [query, setQuery] = useState(ticker);
   const [openSuggest, setOpenSuggest] = useState(false);
@@ -101,6 +106,7 @@ export function ChartToolbar({
   const [agentOpen, setAgentOpen] = useState(false);
   const [tfOpen, setTfOpen] = useState(false);
   const [styleOpen, setStyleOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [srOpen, setSrOpen] = useState(false);
   const [listsOpen, setListsOpen] = useState(false);
   const [splitOpen, setSplitOpen] = useState(false);
@@ -138,6 +144,7 @@ export function ChartToolbar({
         setAgentOpen(false);
         setTfOpen(false);
         setStyleOpen(false);
+        setPaletteOpen(false);
         setSrOpen(false);
         setListsOpen(false);
         setSplitOpen(false);
@@ -245,6 +252,7 @@ export function ChartToolbar({
           setSrOpen(false);
           setListsOpen(false);
           setStyleOpen(false);
+          setPaletteOpen(false);
         }}
         interval={interval}
         onInterval={(next) => {
@@ -281,6 +289,7 @@ export function ChartToolbar({
         open={styleOpen}
         onToggle={() => {
           setStyleOpen((value) => !value);
+          setPaletteOpen(false);
           setTfOpen(false);
           setMenuOpen(false);
           setPatternsOpen(false);
@@ -292,8 +301,28 @@ export function ChartToolbar({
         onChartType={(next) => {
           onChartType(next);
           setStyleOpen(false);
+          setPaletteOpen(false);
         }}
       />
+
+      {theme && onTheme ? (
+        <ChartPaletteMenu
+          open={paletteOpen}
+          onToggle={() => {
+            setPaletteOpen((value) => !value);
+            setStyleOpen(false);
+            setTfOpen(false);
+            setMenuOpen(false);
+            setPatternsOpen(false);
+            setAgentOpen(false);
+            setSrOpen(false);
+            setListsOpen(false);
+            setSplitOpen(false);
+          }}
+          theme={theme}
+          onTheme={onTheme}
+        />
+      ) : null}
 
       <div className="min-w-0 flex-1" />
 
@@ -307,6 +336,7 @@ export function ChartToolbar({
           setSrOpen(false);
           setListsOpen(false);
           setStyleOpen(false);
+          setPaletteOpen(false);
         }}
         enabled={autoPatterns}
         onTogglePattern={onTogglePattern}
@@ -322,6 +352,7 @@ export function ChartToolbar({
           setSrOpen(false);
           setListsOpen(false);
           setStyleOpen(false);
+          setPaletteOpen(false);
         }}
         indicators={indicators}
         onToggleIndicator={onToggleIndicator}
@@ -377,6 +408,7 @@ export function ChartToolbar({
           setAgentOpen(false);
           setListsOpen(false);
           setStyleOpen(false);
+          setPaletteOpen(false);
         }}
         value={autoSR}
         onChange={onAutoSR}
@@ -394,6 +426,7 @@ export function ChartToolbar({
             setSrOpen(false);
             setListsOpen(false);
             setStyleOpen(false);
+          setPaletteOpen(false);
           }}
           split={split}
           onSplit={(mode) => {
@@ -414,6 +447,7 @@ export function ChartToolbar({
           setAgentOpen(false);
           setSrOpen(false);
           setStyleOpen(false);
+          setPaletteOpen(false);
         }}
         activeList={watchlist}
         ticker={ticker}
@@ -462,6 +496,7 @@ export function ChartToolbar({
               setSrOpen(false);
               setListsOpen(false);
               setStyleOpen(false);
+          setPaletteOpen(false);
             }}
             brief={agentBrief}
           />
