@@ -1,11 +1,20 @@
+from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent / ".env", override=True)
+
 from fastapi import FastAPI, HTTPException, Query
+from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
 import yfinance as yf
 import feedparser
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+import hashlib
 import re
 from typing import Optional, List, Dict, Any
 import math
+import urllib.request
 
 app = FastAPI(
     title="AvizorChart Pro Backend Engine",
@@ -139,7 +148,8 @@ ASSET_CATALOG: Dict[str, List[Dict[str, str]]] = {
 # -------------------------------------------------------------------------
 RSS_FEEDS = {
     "CNBC Markets": "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664",
-    "Yahoo Finance": "https://finance.yahoo.com/news/rssindex",
+    "Yahoo Finance": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=%5EGSPC,%5EIXIC,SPY,QQQ&region=US&lang=en-US",
+    "Yahoo MegaCaps": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=AAPL,MSFT,NVDA,AMZN,GOOGL,META,TSLA,JPM,XOM&region=US&lang=en-US",
     "MarketWatch Top": "https://feeds.content.dowjones.io/public/rss/mw_topstories",
     "Investing.com": "https://www.investing.com/rss/news_301.rss",
     "Investing Macro": "https://www.investing.com/rss/news_285.rss",
@@ -148,10 +158,52 @@ RSS_FEEDS = {
 SOURCE_ALIAS = {
     "CNBC Markets": "CNBC",
     "Yahoo Finance": "Yahoo Finance",
+    "Yahoo MegaCaps": "Yahoo Finance",
     "MarketWatch Top": "MarketWatch",
     "Investing.com": "Investing",
     "Investing Macro": "Investing",
 }
+
+RSS_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/rss+xml, application/xml, text/xml, */*",
+}
+
+
+def parse_rss(url: str):
+    request = urllib.request.Request(url, headers=RSS_HEADERS)
+    with urllib.request.urlopen(request, timeout=12) as response:
+        payload = response.read()
+    return feedparser.parse(payload)
+
+
+def published_iso(entry) -> str:
+    parsed = entry.get("published_parsed") or entry.get("updated_parsed")
+    if parsed:
+        try:
+            return datetime(*parsed[:6], tzinfo=timezone.utc).isoformat()
+        except Exception:
+            pass
+    raw = entry.get("published") or entry.get("updated")
+    if raw:
+        try:
+            return parsedate_to_datetime(str(raw)).astimezone(timezone.utc).isoformat()
+        except Exception:
+            return str(raw)
+    return datetime.now(timezone.utc).isoformat()
+
+
+def published_ts(value: str) -> float:
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+    except Exception:
+        try:
+            return parsedate_to_datetime(value).timestamp()
+        except Exception:
+            return 0.0
 
 KNOWN_CHART_TICKERS = {
     "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "GOOG", "META", "TSLA", "AMD", "AVGO",
@@ -217,20 +269,28 @@ EXCLUDED_TICKERS = {
     "ONE", "OUT", "SEE", "SET", "TWO", "WHO", "JOB", "PMI", "PCE", "ETF"
 }
 
+def _score_jitter(text: str) -> int:
+    digest = hashlib.md5(text.encode("utf-8")).hexdigest()
+    return int(digest[:8], 16)
+
+
 def analyze_sentiment_and_impact(text: str):
     text_lower = text.lower()
     bullish_hits = sum(1 for word in KEYWORDS_BULLISH if word in text_lower)
     bearish_hits = sum(1 for word in KEYWORDS_BEARISH if word in text_lower)
+    seed = _score_jitter(text_lower)
 
     if bullish_hits > bearish_hits:
         sentiment = "Bullish"
-        score = min(50 + (bullish_hits * 12), 96)
+        base = 58 + min(bullish_hits, 5) * 5
+        score = min(97, max(54, base + (seed % 19) - 9))
     elif bearish_hits > bullish_hits:
         sentiment = "Bearish"
-        score = min(50 + (bearish_hits * 12), 96)
+        base = 58 + min(bearish_hits, 5) * 5
+        score = min(97, max(54, base + (seed % 19) - 9))
     else:
         sentiment = "Neutral"
-        score = 50
+        score = 31 + (seed % 33)
 
     is_high = any(keyword in text_lower for keyword in KEYWORDS_HIGH_IMPACT)
     impact = "high" if is_high else ("medium" if (bullish_hits + bearish_hits) > 0 else "low")
@@ -267,9 +327,20 @@ def extract_tickers(text: str) -> list[str]:
     return found[:4]
 
 
-from api.market import router as market_router
+from api.market import (
+    ALLOWED_PERIODS,
+    router as market_router,
+    _clamp_period,
+    _flatten_ohlcv,
+    _resolve_interval,
+    _resample_ohlcv,
+    _sanitize_ticker,
+)
+from pattern_detection import detect_chart_patterns
+from api.academy import router as academy_router
 
 app.include_router(market_router)
+app.include_router(academy_router)
 
 
 @app.get("/")
@@ -277,7 +348,15 @@ def read_root():
     return {
         "status": "online",
         "service": "AvizorChart Engine",
-        "endpoints": ["/api/market/history", "/api/market/candles", "/api/market/news"],
+        "endpoints": [
+            "/api/market/history",
+            "/api/market/candles",
+            "/api/market/news",
+            "/api/patterns/{ticker}",
+            "/api/builder/transpile",
+            "/api/builder/convert",
+            "/api/academy/coach",
+        ],
     }
 
 
@@ -296,12 +375,18 @@ def get_free_market_news(
     else:
         feeds_to_fetch = RSS_FEEDS
 
+    seen: set[str] = set()
     for source_name, url in feeds_to_fetch.items():
         try:
-            feed = feedparser.parse(url)
-            for entry in feed.entries[:14]:
+            feed = parse_rss(url)
+            for entry in feed.entries[:18]:
                 title = entry.get("title", "")
                 summary = entry.get("summary", "")
+                link = entry.get("link", "#")
+                article_id = str(entry.get("id") or link or title)
+                if article_id in seen:
+                    continue
+                seen.add(article_id)
                 full_text = f"{title} {summary}"
                 detected_tickers = extract_tickers(full_text)
                 if ticker and ticker.upper() not in detected_tickers and ticker.lower() not in full_text.lower():
@@ -312,12 +397,12 @@ def get_free_market_news(
                     impact = "high"
                 articles.append(
                     {
-                        "id": entry.get("id", entry.get("link", title)),
+                        "id": article_id,
                         "source": SOURCE_ALIAS.get(source_name, source_name),
                         "title": title,
                         "summary": summary,
-                        "url": entry.get("link", "#"),
-                        "published": entry.get("published", datetime.now(timezone.utc).strftime("%H:%M")),
+                        "url": link,
+                        "published": published_iso(entry),
                         "tickers": detected_tickers,
                         "sentiment": sentiment,
                         "score": score,
@@ -328,7 +413,81 @@ def get_free_market_news(
         except Exception:
             continue
 
+    articles.sort(key=lambda item: published_ts(str(item.get("published", ""))), reverse=True)
     return {"count": len(articles), "articles": articles}
+
+
+@app.get("/api/patterns/{ticker}")
+def get_chart_patterns(
+    ticker: str,
+    period: Optional[str] = Query(None, description="Periodo yfinance alineado con el gráfico"),
+    interval: str = Query("1d", description="Intervalo del Mega Gráfico"),
+):
+    """Soportes, resistencias y patrones chartistas a partir de velas Yahoo Finance."""
+    symbol = _sanitize_ticker(ticker)
+    interval_key = interval.strip().lower()
+    if interval_key in {"1s", "s"}:
+        interval_key = "1w"
+    source_interval, default_period, resample_rule, _include_time = _resolve_interval(interval_key)
+    requested_period = (period or default_period).strip().lower()
+    if requested_period not in ALLOWED_PERIODS:
+        requested_period = default_period
+    resolved_period = _clamp_period(source_interval, requested_period)
+
+    try:
+        history = yf.Ticker(symbol).history(
+            period=resolved_period,
+            interval=source_interval,
+            auto_adjust=True,
+            actions=False,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Fallo al descargar {symbol}: {exc}") from exc
+
+    if history is None or history.empty:
+        raise HTTPException(status_code=404, detail=f"No se encontraron datos para {symbol}")
+
+    frame = _flatten_ohlcv(history)
+    if resample_rule:
+        frame = _resample_ohlcv(frame, resample_rule)
+    if frame.empty:
+        raise HTTPException(status_code=404, detail=f"Sin OHLCV válido para {symbol}")
+
+    return {
+        "ticker": symbol,
+        "status": "success",
+        "period": resolved_period,
+        "interval": interval_key,
+        "data": detect_chart_patterns(frame),
+    }
+
+
+class BuilderTranspileBody(BaseModel):
+    source: str = Field(..., min_length=1, description="Código Pine Script o MQL5")
+    name: Optional[str] = Field(None, description="Nombre sugerido del indicador")
+
+
+@app.post("/api/builder/transpile")
+@app.post("/api/builder/convert")
+def builder_transpile(payload: BuilderTranspileBody):
+    """Parser estructural (metadatos/inputs/indicadores) + IA de lógica → TypeScript ECharts."""
+    from parsers.mql5_parser import RobustMQL5Parser
+    from parsers.pine_parser import RobustPineScriptParser
+    from parsers.transpile_core import detect_language, transpile
+
+    source = (payload.source or "").strip()
+    if not source:
+        raise HTTPException(status_code=400, detail="El código Pine o MQL5 está vacío.")
+    language = detect_language(source)
+    try:
+        if language == "mql5":
+            RobustMQL5Parser(source).parse()
+        elif language == "pine":
+            RobustPineScriptParser(source).parse()
+        result = transpile(source, payload.name or "")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Fallo al convertir con el parser Python: {exc}") from exc
+    return result
 
 
 if __name__ == "__main__":

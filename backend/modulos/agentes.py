@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
 try:
@@ -6,7 +7,7 @@ try:
 except ImportError:  # pragma: no cover
     Groq = None  # type: ignore
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parents[1] / ".env", override=True)
 
 AGENTES = {
     "david": {"nombre": "David Chen", "rol": "Ojeador / Head Scout"},
@@ -36,7 +37,7 @@ def llamar_ia(prompt: str) -> str:
                     "content": prompt,
                 }
             ],
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
             temperature=0.2,
             max_tokens=350,
         )
